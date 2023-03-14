@@ -1,0 +1,10 @@
+server.port: 9901
+
+spring:
+  profiles.active: local-cms
+  mvc.servlet.path: /
+  servlet.multipart.max-file-size: 500MB
+  servlet.multipart.max-request-size: 500MB
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
