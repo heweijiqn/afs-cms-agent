@@ -1,0 +1,11 @@
+spring:
+  log:
+    dir: /home/ecs-user/work/log/afs-cms
+    level: INFO
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: "${AFS_DB_URL:}"
+    username: "${AFS_DB_USERNAME:}"
+    password: "${AFS_DB_PASSWORD:}"
+
+env: preview
