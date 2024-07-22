@@ -1,0 +1,19 @@
+package com.afs.publicapi.dao.model;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.Data;
+
+import java.util.Date;
+
+@Data
+public class ConfigItem {
+    Long id;
+    String desc;
+    String name;
+    String value;
+    String site;
+    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss", timezone="GMT+8")
+    public Date ctime;
+    @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss", timezone="GMT+8")
+    public Date utime;
+}
