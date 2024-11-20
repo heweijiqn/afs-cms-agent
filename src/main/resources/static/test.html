@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>POST Request with JSON Body and Content-Type</title>
+</head>
+<body>
+<h1>POST Request with JSON Body and Content-Type</h1>
+<form method="POST" action="http://127.0.0.1:9901/healthX">
+    <label for="json">JSON Body:</label><br>
+    <textarea id="json" name="json" rows="10" cols="50"></textarea><br>
+    <input type="submit" value="Submit">
+</form>
+<script>
+    // Set the Content-Type header to application/json
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', form.action);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = function() {
+            console.log(xhr.responseText);
+        };
+        xhr.send(JSON.stringify({json: form.json.value}));
+    });
+</script>
+</body>
+</html>
