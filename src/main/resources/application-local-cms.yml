@@ -1,0 +1,34 @@
+server:
+  address: 127.0.0.1
+  error:
+    include-message: always
+
+spring:
+  log:
+    dir: ./log
+    level: INFO
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: "jdbc:h2:file:./data/cms-local;MODE=MySQL;DATABASE_TO_LOWER=TRUE;NON_KEYWORDS=VALUE,USER"
+    username: sa
+    password: ""
+  sql:
+    init:
+      mode: always
+      encoding: UTF-8
+      schema-locations: classpath:local/schema.sql,classpath:agent/schema.sql
+      data-locations: classpath:local/platform-case-data.sql,classpath:local/report-fixture-metrics.sql
+
+env: local
+afs:
+  local-workspace: true
+
+# AI 智能体使用 OpenAI 兼容 Chat Completions 接口；留空时明确降级为规则建议。
+cms:
+  agent:
+    ai:
+      base-url: "${AFS_AGENT_AI_BASE_URL:}"
+      api-key: "${AFS_AGENT_AI_API_KEY:}"
+      model-name: "${AFS_AGENT_AI_MODEL:/models/DeepSeek-V4.1-Flash-1017}"
+      # 推理模型单次分析可能超过 20 秒；超时后会自动降级为规则模板。
+      timeout-seconds: "${AFS_AGENT_AI_TIMEOUT_SECONDS:90}"
