@@ -1,0 +1,39 @@
+[
+  {
+    "id": "healthy", "campaignId": "demo-growth", "site": "demo-site", "channel": "demo-channel",
+    "currency": "USD", "currentBudget": 100.00,
+    "daily": [
+      {"date":"2026-11-05","ad_spend":30.00,"gross_revenue":48.00,"ad_impressions":6000,"ad_clicks":110,"ad_conversion":6},
+      {"date":"2026-11-06","ad_spend":35.00,"gross_revenue":58.00,"ad_impressions":7000,"ad_clicks":145,"ad_conversion":7},
+      {"date":"2026-11-07","ad_spend":35.00,"gross_revenue":64.00,"ad_impressions":7000,"ad_clicks":145,"ad_conversion":7}
+    ],
+    "segments": [
+      {"name":"移动端受众","impressions":13000,"clicks":300,"conversions":17,"spend":72.00},
+      {"name":"桌面端受众","impressions":7000,"clicks":100,"conversions":3,"spend":28.00}
+    ],
+    "creative": [
+      {"name":"利益点开场","impressions":10000,"clicks":235},
+      {"name":"场景开场","impressions":10000,"clicks":165}
+    ]
+  },
+  {
+    "id": "underperforming", "campaignId": "demo-recovery", "site": "demo-site", "channel": "demo-channel",
+    "currency": "USD", "currentBudget": 100.00,
+    "daily": [
+      {"date":"2026-11-05","ad_spend":30.00,"gross_revenue":21.00,"ad_impressions":6000,"ad_clicks":110,"ad_conversion":3},
+      {"date":"2026-11-06","ad_spend":35.00,"gross_revenue":26.00,"ad_impressions":7000,"ad_clicks":145,"ad_conversion":3},
+      {"date":"2026-11-07","ad_spend":35.00,"gross_revenue":20.00,"ad_impressions":7000,"ad_clicks":145,"ad_conversion":2}
+    ],
+    "segments": [],
+    "creative": []
+  },
+  {
+    "id": "low-volume", "campaignId": "demo-learning", "site": "demo-site", "channel": "demo-channel",
+    "currency": "USD", "currentBudget": 50.00,
+    "daily": [
+      {"date":"2026-11-07","ad_spend":8.00,"gross_revenue":22.00,"ad_impressions":600,"ad_clicks":18,"ad_conversion":1}
+    ],
+    "segments": [],
+    "creative": []
+  }
+]
