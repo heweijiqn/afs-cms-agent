@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="afs-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f2338"/>
+      <stop offset="100%" stop-color="#0a4a42"/>
+    </linearGradient>
+    <linearGradient id="afs-bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a2f1d8"/>
+      <stop offset="100%" stop-color="#39b7a3"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#afs-bg)" stroke="#70d4b9" stroke-width="2.5"/>
+  <rect x="14" y="34" width="9" height="17" rx="3" fill="url(#afs-bar)"/>
+  <rect x="27.5" y="24" width="9" height="27" rx="3" fill="url(#afs-bar)"/>
+  <rect x="41" y="14" width="9" height="37" rx="3" fill="url(#afs-bar)"/>
+</svg>
