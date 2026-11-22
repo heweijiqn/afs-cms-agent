@@ -3,6 +3,7 @@ import { $, escape as e, busy, errorIn, formValues, pageHead, table, toast, tone
 
 const providerLabels = {
   OPENAI: "AI 服务平台",
+  ALIYUN_OSS: "阿里云 OSS",
   TIKTOK: "TikTok Ads",
   GOOGLE: "Google Ads",
   META: "Meta Ads",
@@ -26,7 +27,18 @@ export async function channelVault(target, context, current) {
       <label>随机度 Temperature（可选）<input name="temperature" type="number" min="0" max="2" step="0.1" placeholder="0.2"></label>
       <label>图片模型（可选）<input name="imageModel" maxlength="200" placeholder="例如 gpt-image-1"></label>
       <div><button type="submit" class="button">保存配置</button></div>
-    </form><div id="ai-platform-error"></div></section>`);
+    </form><div id="ai-platform-error"></div></section>
+    <section class="panel">
+    <h2>阿里云 OSS 存储配置</h2>
+    <p class="sub">配置阿里云 OSS 后，素材与文件上传将自动使用 OSS 存储并立即生效（无需重启）；未配置时本地模式默认保存至本机目录。已保存后修改域名或 Bucket 无需重复填写密钥。</p>
+    <form id="oss-platform-form" class="form-grid">
+      <label>OSS Endpoint<input name="endpoint" required maxlength="2048" placeholder="https://oss-cn-hangzhou.aliyuncs.com"></label>
+      <label>Bucket 名称<input name="bucket" required maxlength="200" placeholder="例如 afs-media-prod"></label>
+      <label>AccessKey ID<input name="accessKeyId" type="password" required maxlength="512" autocomplete="new-password" placeholder="输入 AccessKey ID"></label>
+      <label>AccessKey Secret<input name="accessKeySecret" type="password" required maxlength="512" autocomplete="new-password" placeholder="输入 AccessKey Secret"></label>
+      <label class="all">公网访问域名（可选）<input name="publicBaseUrl" maxlength="2048" placeholder="留空则默认使用 https://{bucket}.{endpoint}，也可填写自定义 CDN 域名"></label>
+      <div><button type="submit" class="button">保存 OSS 配置</button></div>
+    </form><div id="oss-platform-error"></div></section>`);
   target.insertAdjacentHTML("beforeend", `<section class="panel">
     <h2>广告平台凭据</h2>
     <p class="sub">凭据采用 AES-256-GCM 加密存储于安全密钥库，保存后可通过下方列表验证接口连通性。</p>
@@ -121,7 +133,41 @@ export async function channelVault(target, context, current) {
       await Promise.all([load(), loadAiConfiguration()]);
     }, message => errorIn(aiFailure, message));
   };
-  await Promise.all([load(), loadAiConfiguration()]);
+  const ossForm = $("#oss-platform-form", target);
+  async function loadOssConfiguration() {
+    if (!ossForm) return;
+    try {
+      const saved = await request("/cms/console/channel-credentials/oss");
+      if (!current() || !saved.configured) return;
+      for (const key of ["endpoint", "bucket", "publicBaseUrl"]) {
+        if (ossForm.elements[key]) ossForm.elements[key].value = saved[key] ?? "";
+      }
+      ossForm.elements.accessKeyId.required = false;
+      ossForm.elements.accessKeyId.placeholder = saved.accessKeyIdMasked
+        ? `已保存 ${saved.accessKeyIdMasked}（留空则沿用原凭据）`
+        : "已保存（留空则沿用原凭据，填写则替换）";
+      ossForm.elements.accessKeySecret.required = false;
+      ossForm.elements.accessKeySecret.placeholder = "已保存（留空则沿用原密钥，填写则替换）";
+    } catch (error) {
+      if (current()) errorIn($("#oss-platform-error", target), error.message);
+    }
+  }
+  if (ossForm) ossForm.onsubmit = event => {
+    event.preventDefault();
+    const ossFailure = $("#oss-platform-error", target);
+    busy($("button", ossForm), async () => {
+      ossFailure.replaceChildren();
+      const settings = Object.fromEntries(new FormData(ossForm));
+      await request("/cms/console/channel-credentials", {
+        body: { provider: "ALIYUN_OSS", alias: "aliyun-oss", secret: JSON.stringify(settings) }
+      });
+      ossForm.elements.accessKeyId.value = "";
+      ossForm.elements.accessKeySecret.value = "";
+      toast("阿里云 OSS 配置已保存");
+      await Promise.all([load(), loadOssConfiguration()]);
+    }, message => errorIn(ossFailure, message));
+  };
+  await Promise.all([load(), loadAiConfiguration(), loadOssConfiguration()]);
 }
 
 export async function localApi(target, context, current) {

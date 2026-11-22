@@ -40,7 +40,9 @@ public class AliUploadFileController {
     @ResponseBody
     @PostMapping("/upload/file")
     public Object uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
-        if (localMedia != null) return ResponseUtils.result(localMedia.save(file, false));
+        if (!aliUploadFileService.isConfigured() && localMedia != null) {
+            return ResponseUtils.result(localMedia.save(file, false));
+        }
         try {
             Map<String, String> uploadMap = aliUploadFileService.uploadFile(file, "afs/" + AppUtils.getUUID());
             Map<String, String> map = new HashMap<>();

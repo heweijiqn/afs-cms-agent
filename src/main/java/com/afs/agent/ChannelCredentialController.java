@@ -120,6 +120,29 @@ public class ChannelCredentialController {
             } catch (IllegalArgumentException | com.fasterxml.jackson.core.JsonProcessingException failure) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, failure.getMessage());
             }
+        } else if (AliyunOssSettings.PROVIDER.equals(request.provider())) {
+            try {
+                if (!AliyunOssSettings.ALIAS.equals(request.alias())) {
+                    throw new IllegalArgumentException("阿里云 OSS 配置的别名须为 aliyun-oss");
+                }
+                var node = json.readTree(secretToStore);
+                if (node != null && node.isObject()) {
+                    var existing = aliyunOssSettings();
+                    if (existing != null) {
+                        var merged = (com.fasterxml.jackson.databind.node.ObjectNode) node;
+                        if (merged.path("accessKeyId").asText("").isBlank()) {
+                            merged.put("accessKeyId", existing.accessKeyId());
+                        }
+                        if (merged.path("accessKeySecret").asText("").isBlank()) {
+                            merged.put("accessKeySecret", existing.accessKeySecret());
+                        }
+                        secretToStore = json.writeValueAsString(merged);
+                    }
+                }
+                AliyunOssSettings.parse(json, secretToStore);
+            } catch (IllegalArgumentException | com.fasterxml.jackson.core.JsonProcessingException failure) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, failure.getMessage());
+            }
         }
         jdbc.update("""
                 MERGE INTO channel_credential (provider, alias, encrypted, updated_at)
@@ -152,6 +175,24 @@ public class ChannelCredentialController {
 
     AiPlatformSettings aiSettings() throws Exception {
         return AiPlatformSettings.parse(json, readSecret(AiPlatformSettings.PROVIDER, AiPlatformSettings.ALIAS));
+    }
+
+    @RootAuth
+    @GetMapping("/oss")
+    Map<String, Object> ossConfiguration() throws Exception {
+        var settings = aliyunOssSettings();
+        if (settings == null) return Map.of("configured", false);
+        var result = new java.util.LinkedHashMap<String, Object>();
+        result.put("configured", true);
+        result.put("endpoint", settings.endpoint());
+        result.put("bucket", settings.bucket());
+        result.put("publicBaseUrl", settings.publicBaseUrl());
+        result.put("accessKeyIdMasked", settings.maskedAccessKeyId());
+        return result;
+    }
+
+    public AliyunOssSettings aliyunOssSettings() throws Exception {
+        return AliyunOssSettings.parse(json, readSecret(AliyunOssSettings.PROVIDER, AliyunOssSettings.ALIAS));
     }
 
     void renameFixtureAlias(String provider, String oldAlias, String newAlias) throws Exception {
@@ -199,6 +240,7 @@ public class ChannelCredentialController {
     @PostMapping("/check")
     Map<String, Object> check(@RequestBody Probe probe) throws Exception {
         if (AiPlatformSettings.PROVIDER.equals(probe.provider())) return checkAi(probe.alias());
+        if (AliyunOssSettings.PROVIDER.equals(probe.provider())) return checkAliyunOss(probe.alias());
         String url = switch (probe.provider()) {
             case "TIKTOK" -> "https://business-api.tiktok.com/open_api/v1.3/advertiser/info/";
             case "GOOGLE" -> "https://googleads.googleapis.com/v26/customers:listAccessibleCustomers";
@@ -308,6 +350,42 @@ public class ChannelCredentialController {
         }
     }
 
+    private Map<String, Object> checkAliyunOss(String alias) throws Exception {
+        if (!AliyunOssSettings.ALIAS.equals(alias)) return Map.of("httpStatus", 0, "body", "找不到该阿里云 OSS 配置");
+        var settings = aliyunOssSettings();
+        if (settings == null) return Map.of("httpStatus", 0, "body", "请先保存阿里云 OSS 配置");
+        com.aliyun.oss.OSS client = null;
+        long started = System.nanoTime();
+        try {
+            client = new com.aliyun.oss.OSSClientBuilder()
+                    .build(settings.endpoint(), settings.accessKeyId(), settings.accessKeySecret());
+            boolean exists = client.doesBucketExist(settings.bucket());
+            long elapsed = (System.nanoTime() - started) / 1_000_000L;
+            if (!exists) {
+                return Map.of("httpStatus", 404, "body",
+                        "已连通 OSS 服务端（耗时 " + elapsed + " ms），但 Bucket [" + settings.bucket() + "] 不存在或无访问权限。");
+            }
+            return Map.of("httpStatus", 200, "body",
+                    "阿里云 OSS 连接成功（耗时 " + elapsed + " ms），Bucket [" + settings.bucket() + "] 可正常访问。\n公网域名："
+                            + settings.publicBaseUrl());
+        } catch (com.aliyun.oss.OSSException failure) {
+            long elapsed = (System.nanoTime() - started) / 1_000_000L;
+            int status = failure.getRawResponseError() != null && failure.getErrorCode() != null ? 403 : 0;
+            String detail = settings.redact(failure.getErrorCode() + ": " + failure.getErrorMessage());
+            return Map.of("httpStatus", status, "body",
+                    "阿里云 OSS 鉴权或访问失败（耗时 " + elapsed + " ms）：" + abbreviate(detail));
+        } catch (Exception failure) {
+            long elapsed = (System.nanoTime() - started) / 1_000_000L;
+            String detail = settings.redact(failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage());
+            return Map.of("httpStatus", 0, "body",
+                    "无法连接阿里云 OSS（耗时 " + elapsed + " ms）：" + abbreviate(detail));
+        } finally {
+            if (client != null) {
+                client.shutdown();
+            }
+        }
+    }
+
     private static String abbreviate(String value) {
         return value.length() <= 600 ? value : value.substring(0, 597) + "...";
     }
@@ -354,7 +432,7 @@ public class ChannelCredentialController {
         return key;
     }
 
-    record Credential(@NotBlank @Pattern(regexp = "TIKTOK|GOOGLE|META|TABOOLA|OPENAI") String provider,
+    record Credential(@NotBlank @Pattern(regexp = "TIKTOK|GOOGLE|META|TABOOLA|OPENAI|ALIYUN_OSS") String provider,
                       @NotBlank @Size(max = 80) String alias,
                       @NotBlank @Size(max = 24000) String secret) {}
 }
