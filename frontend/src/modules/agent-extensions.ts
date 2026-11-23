@@ -69,7 +69,7 @@ export function extractMentionedCampaignIds(text: string): string[] {
 // 2. Agent Toolbox (Patrol & Daily Brief | CSV Analyzer | Creative Lab)
 // ============================================================================
 
-let activeTool: "patrol" | "csv" | "creative" = "patrol";
+let activeTool: "patrol" | "csv" | "creative" | "localization" = "patrol";
 
 const SAMPLE_CSV = `Campaign Name,Amount Spent,Conversion Value,Impressions,Clicks,Conversions,Frequency
 FB_US_DentalImplants_Scale,420.50,685.20,38400,1180,142,2.1
@@ -84,6 +84,7 @@ export async function renderAgentToolbox(container: HTMLElement, onDiagnose: (ci
       <button type="button" class="tab-btn" aria-pressed="${activeTool === "patrol"}" data-tool="patrol">定时巡检与每日战报</button>
       <button type="button" class="tab-btn" aria-pressed="${activeTool === "csv"}" data-tool="csv">外部 CSV 报表诊断</button>
       <button type="button" class="tab-btn" aria-pressed="${activeTool === "creative"}" data-tool="creative">创意工坊与素材疲劳</button>
+      <button type="button" class="tab-btn" aria-pressed="${activeTool === "localization"}" data-tool="localization">多语言DCO与合规雷达</button>
     </div>
     <div id="toolbox-body"><div class="placeholder">正在加载…</div></div>
   `;
@@ -98,7 +99,8 @@ export async function renderAgentToolbox(container: HTMLElement, onDiagnose: (ci
   const body = $("#toolbox-body", container) as HTMLElement;
   if (activeTool === "patrol") await renderPatrolPanel(body);
   else if (activeTool === "csv") renderCsvAnalyzerPanel(body);
-  else await renderCreativeLabPanel(body, onDiagnose);
+  else if (activeTool === "creative") await renderCreativeLabPanel(body, onDiagnose);
+  else await renderLocalizationAndPolicyRadar(body, onDiagnose);
 }
 
 async function renderPatrolPanel(target: HTMLElement) {
@@ -510,6 +512,256 @@ async function renderCreativeLabPanel(target: HTMLElement, onDiagnose: (cid: str
     if (target.isConnected) errorIn(target, err?.message || "加载创意工坊失败");
   }
 }
+
+// ============================================================================
+// Multilingual DCO & Overseas Policy Compliance Radar
+// ============================================================================
+
+const COUNTRY_LANG_MAP: Record<string, [string, string]> = {
+  US: ["en-US", "美国 (Tier 1 US)"],
+  DE: ["de-DE", "德国 (Germany - 严谨参数与DSGVO认证)"],
+  JP: ["ja-JP", "日本 (Japan - 细腻口碑与敬语规范)"],
+  ES: ["es-ES", "西班牙/拉美 (Spain/LatAm - 热情共鸣与高性价比)"],
+  FR: ["fr-FR", "法国 (France - 品质审美与精致表达)"],
+  SA: ["ar-SA", "沙特/阿联酋 (Middle East - 奢华尊贵与信誉保证)"],
+  BR: ["pt-BR", "巴西 (Brazil - 社交热度与分期优惠)"],
+  GB: ["en-GB", "英国 (UK - 务实理性与性价比)"]
+};
+
+async function renderLocalizationAndPolicyRadar(target: HTMLElement, onDiagnose: (cid: string, btn: HTMLElement) => void) {
+  try {
+    const [camps, drafts] = await Promise.all([
+      requestList("/cms/agent/campaigns?limit=25").catch(() => []),
+      requestList("/cms/agent/overseas/localization/drafts").catch(() => [])
+    ]);
+    if (!target.isConnected) return;
+
+    target.innerHTML = `
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>多语言 DCO 本地化文案生成 & 海外政策合规雷达</h2>
+            <p class="sub">针对出海核心痛点：结合目标市场母语习惯生产高转化文案，并在发布前即时排查 Meta / Google / TikTok / FTC 政策违规风险。</p>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div>
+            <h3>一键生成地道多语言广告素材（AI 驱动）</h3>
+            <form id="loc-gen-form" class="form-grid" style="margin-top:10px">
+              <label>关联在投活动
+                <select name="campaignId" id="loc-camp-select">
+                  <option value="">自定义业务/商品主题（不关联活动）</option>
+                  ${camps.map(c => `<option value="${e(c.campaignId)}" data-name="${e(c.name || c.campaignId)}" data-plat="${e(c.platform || "Google")}">${e(c.name || c.campaignId)} (${e(c.platform || "Google")})</option>`).join("")}
+                </select>
+              </label>
+              <label>广告主题 / 核心品类卖点
+                <input type="text" name="topic" id="loc-topic-input" placeholder="例如：跨境便携储能电源 / 高端牙科护理 / 智能手表" required>
+              </label>
+              <label>目标国家 / 市场
+                <select name="targetCountry" id="loc-country-select">
+                  ${Object.entries(COUNTRY_LANG_MAP).map(([code, [lang, label]]) => `<option value="${code}" data-lang="${lang}">${e(label)}</option>`).join("")}
+                </select>
+              </label>
+              <label>目标语言代码
+                <input type="text" name="targetLanguage" id="loc-lang-input" value="en-US" readonly class="mono">
+              </label>
+              <label>投放媒体平台
+                <select name="platform" id="loc-platform-select">
+                  <option value="Google">Google 搜索与展示广告</option>
+                  <option value="Meta">Meta / Facebook 社交信息流</option>
+                  <option value="TikTok">TikTok 15秒短视频分镜脚本</option>
+                </select>
+              </label>
+              <div style="grid-column:1/-1;margin-top:4px">
+                <button type="submit" class="button" id="loc-submit-btn">立即生成本地化高转化创意 (AI驱动)</button>
+              </div>
+            </form>
+          </div>
+
+          <div>
+            <h3>海外广告合规雷达审查（即时排雷）</h3>
+            <p class="secondary-text" style="margin-bottom:8px">直接粘贴待投文案，检测绝对化夸大、虚假承诺、侵权商标、Meta 个人属性禁区等违规项。</p>
+            <textarea id="radar-input-text" rows="5" class="code-editor" style="width:100%;font-size:13px;padding:8px" placeholder="粘贴广告主标题、正文或落地页承诺文案进行合规检测…"></textarea>
+            <div style="margin-top:8px;display:flex;gap:10px;align-items:center">
+              <button type="button" class="button secondary small" id="btn-run-radar">合规雷达扫描</button>
+              <span class="secondary-text">审核标准：FTC / Meta / Google / TikTok 广告政策</span>
+            </div>
+            <div id="radar-result-box" style="margin-top:12px"></div>
+          </div>
+        </div>
+
+        <div class="sub-section" style="margin-top:28px">
+          <div class="panel-head">
+            <div>
+              <h3>已生成的本地化创意与合规草稿箱（共 ${drafts.length} 条）</h3>
+              <p class="sub">支持一键全量入库发布到「内容管理 → 广告文案」，或直接发起双样本 A/B 测试。</p>
+            </div>
+            <button type="button" class="button secondary small" id="loc-go-adtext">查看内容管理中的广告文案</button>
+          </div>
+          <div class="creative-draft-grid">
+            ${drafts.length === 0
+              ? '<div class="placeholder" style="grid-column:1/-1">暂无本地化创意草稿，请在上方选择目标国家和渠道一键生成。</div>'
+              : drafts.map(d => {
+                  const score = d.complianceScore || 90;
+                  const scoreClass = score >= 85 ? "score-green" : score >= 60 ? "score-amber" : "score-red";
+                  const statusLabel = d.status === "PUBLISHED" ? "已入库发布" : d.status === "AB_TESTING" ? "A/B 测试中" : "草稿";
+                  const statusTone = d.status === "PUBLISHED" ? "teal" : d.status === "AB_TESTING" ? "amber" : "gray";
+
+                  return `
+                    <div class="creative-draft-card">
+                      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+                        <div style="display:flex;gap:6px;align-items:center">
+                          <span class="badge gray">${e(d.targetCountry || "US")} / ${e(d.targetLanguage || "en-US")}</span>
+                          <span class="badge gray">${e(d.platform || "Google")}</span>
+                        </div>
+                        <span class="radar-score-pill ${scoreClass}">合规度 ${score} 分</span>
+                      </div>
+                      <strong style="font-size:14px;margin-top:4px">${e(d.headline)}</strong>
+                      ${d.hookText ? `<div class="secondary-text"><strong>Hook:</strong> ${e(d.hookText)}</div>` : ""}
+                      <pre class="brief-pre" style="max-height:130px;overflow-y:auto">${e(d.bodyText)}</pre>
+                      <div style="font-size:12.5px;color:var(--deep)"><strong>CTA:</strong> <code class="mono">${e(d.ctaText || "Learn More")}</code></div>
+                      ${d.complianceAdvice ? `<div style="font-size:11.5px;color:#047857;background:#ecfdf5;padding:6px 8px;border-radius:6px;border:1px solid #a7f3d0"><strong>合规建议：</strong>${e(d.complianceAdvice)}</div>` : ""}
+                      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:8px;border-top:1px solid #f1f5f9">
+                        ${toneBadge(statusLabel, statusTone as any)}
+                        <div class="action-set">
+                          <button type="button" class="button secondary small" data-pub-loc="${d.id}">一键入库发布</button>
+                          <button type="button" class="button secondary small" data-ab-loc="${d.id}">发起 A/B 测试</button>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }).join("")}
+          </div>
+        </div>
+      </section>
+    `;
+
+    // Wire Camp Select
+    const campSel = $("#loc-camp-select", target) as HTMLSelectElement;
+    const topicInput = $("#loc-topic-input", target) as HTMLInputElement;
+    const platSel = $("#loc-platform-select", target) as HTMLSelectElement;
+    if (campSel && topicInput) {
+      campSel.onchange = () => {
+        const opt = campSel.selectedOptions[0];
+        if (opt && opt.value) {
+          topicInput.value = opt.dataset.name || "";
+          if (opt.dataset.plat) platSel.value = opt.dataset.plat;
+        }
+      };
+    }
+
+    // Wire Country Select to Language Input
+    const countrySel = $("#loc-country-select", target) as HTMLSelectElement;
+    const langInput = $("#loc-lang-input", target) as HTMLInputElement;
+    if (countrySel && langInput) {
+      countrySel.onchange = () => {
+        const opt = countrySel.selectedOptions[0];
+        if (opt) langInput.value = opt.dataset.lang || "en-US";
+      };
+    }
+
+    // Wire Form Submit
+    const form = $("#loc-gen-form", target) as HTMLFormElement;
+    if (form) {
+      form.onsubmit = (ev) => {
+        ev.preventDefault();
+        const btn = $("#loc-submit-btn", target) as HTMLButtonElement;
+        busy(btn, async () => {
+          const vals = formValues(form);
+          const res = await request("/cms/agent/overseas/localization/generate", {
+            body: {
+              campaignId: vals.campaignId || "",
+              topic: vals.topic || "",
+              targetCountry: vals.targetCountry || "US",
+              targetLanguage: vals.targetLanguage || "en-US",
+              platform: vals.platform || "Google"
+            }
+          });
+          toast(`已为 ${vals.targetCountry} 生成 ${res.count || 3} 组地道本地化广告创意`);
+          renderLocalizationAndPolicyRadar(target, onDiagnose);
+        });
+      };
+    }
+
+    // Wire Radar Audit Button
+    const runRadarBtn = $("#btn-run-radar", target);
+    const radarInput = $("#radar-input-text", target) as HTMLTextAreaElement;
+    const radarBox = $("#radar-result-box", target);
+    if (runRadarBtn && radarInput && radarBox) {
+      runRadarBtn.onclick = () => {
+        const txt = radarInput.value.trim();
+        if (!txt) {
+          toast("请先输入需要审核的文案");
+          return;
+        }
+        busy(runRadarBtn as HTMLButtonElement, async () => {
+          const res = await request("/cms/agent/overseas/localization/audit", {
+            body: {
+              text: txt,
+              platform: platSel.value || "Google",
+              targetCountry: countrySel.value || "US"
+            }
+          });
+          const score = res.riskScore ?? 95;
+          const scoreClass = score >= 85 ? "score-green" : score >= 60 ? "score-amber" : "score-red";
+          const levelLabel = res.riskLevel === "COMPLIANT" ? "合规安全 (COMPLIANT)" : res.riskLevel === "WARNING" ? "轻度风险 (WARNING)" : "严重违规 (VIOLATION)";
+          const tokens = (res.flaggedTokens || []) as string[];
+
+          radarBox.innerHTML = `
+            <div class="radar-box">
+              <div class="radar-box-head">
+                <span class="radar-score-pill ${scoreClass}">合规安全评分：${score} / 100</span>
+                ${toneBadge(levelLabel, score >= 85 ? "teal" : score >= 60 ? "amber" : "red")}
+              </div>
+              ${tokens.length > 0 ? `
+                <div>
+                  <span class="secondary-text">检测到的敏感/风险词汇标签：</span>
+                  <div class="radar-tokens">
+                    ${tokens.map(t => `<span class="radar-token-tag">${e(t)}</span>`).join("")}
+                  </div>
+                </div>
+              ` : '<div style="font-size:12.5px;color:#15803d;margin-bottom:6px">✓ 未检测到高危违规关键词或侵权用语</div>'}
+              <div class="radar-sugg-box">
+                <strong>✦ 政策合规专家修改建议：</strong><br>
+                ${e(res.aiRevisionSuggestion || "无特别风险，可直接投放")}
+              </div>
+            </div>
+          `;
+        });
+      };
+    }
+
+    // Wire Draft Action Buttons
+    target.querySelectorAll<HTMLButtonElement>("[data-pub-loc]").forEach(btn => {
+      btn.onclick = () => {
+        busy(btn, async () => {
+          const id = Number(btn.dataset.pubLoc);
+          await request(`/cms/agent/overseas/localization/drafts/${id}/status`, { body: { status: "PUBLISHED" } });
+          toast("已入库发布至「内容管理 → 广告文案」");
+          renderLocalizationAndPolicyRadar(target, onDiagnose);
+        });
+      };
+    });
+
+    target.querySelectorAll<HTMLButtonElement>("[data-ab-loc]").forEach(btn => {
+      btn.onclick = () => {
+        busy(btn, async () => {
+          const id = Number(btn.dataset.abLoc);
+          await request(`/cms/agent/overseas/localization/drafts/${id}/status`, { body: { status: "AB_TESTING" } });
+          toast("已加入 A/B 测试队列");
+          renderLocalizationAndPolicyRadar(target, onDiagnose);
+        });
+      };
+    });
+
+    const goAdTextBtn = $("#loc-go-adtext", target);
+    if (goAdTextBtn) goAdTextBtn.onclick = () => openCatalogSection("content", "copy");
+  } catch (err: any) {
+    if (target.isConnected) errorIn(target, err?.message || "加载多语言本地化雷达失败");
+  }
+}
+
 
 // ============================================================================
 // 3. Post-Execution Attribution & Episodic Decision Memory (Stats Tab)

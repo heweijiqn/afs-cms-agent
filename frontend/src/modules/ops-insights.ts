@@ -44,6 +44,8 @@ const DAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", 
 
 export function mountOverviewInsights(container: HTMLElement, onDiagnose: (campaignId: string, btn: HTMLElement) => void) {
   let selectedPlatform = "";
+  let selectedCurrency = "USD";
+  let selectedCohortDays = 14;
 
   container.innerHTML = `
     <div class="ops-insights-grid">
@@ -74,26 +76,56 @@ export function mountOverviewInsights(container: HTMLElement, onDiagnose: (campa
         <div id="ops-pacing-body"><div class="placeholder">正在监测预算消耗速率…</div></div>
       </section>
     </div>
+
+    <section class="panel" id="ops-cohort-panel" style="margin-top:20px">
+      <div class="panel-head">
+        <div>
+          <h2>出海长周期 Cohort 队列回收与 LTV 预测</h2>
+          <p class="sub">突破单日静态 ROAS 局限，追踪 D0 / D1 / D3 / D7 / D14 / D30 队列留存与长周期回本周期（Payback Period）。</p>
+        </div>
+        <div class="action-set">
+          <div class="preset-group" id="ops-cohort-currency" role="tablist" aria-label="切换币种">
+            <button type="button" class="button small" data-curr="USD">USD ($)</button>
+            <button type="button" class="button secondary small" data-curr="CNY">CNY (¥)</button>
+            <button type="button" class="button secondary small" data-curr="EUR">EUR (€)</button>
+            <button type="button" class="button secondary small" data-curr="GBP">GBP (£)</button>
+            <button type="button" class="button secondary small" data-curr="JPY">JPY (¥)</button>
+          </div>
+          <div class="preset-group" id="ops-cohort-days" role="tablist" aria-label="队列周期">
+            <button type="button" class="button small" data-days="14">近 14 天</button>
+            <button type="button" class="button secondary small" data-days="7">近 7 天</button>
+            <button type="button" class="button secondary small" data-days="30">近 30 天</button>
+          </div>
+        </div>
+      </div>
+      <div id="ops-cohort-body"><div class="placeholder">正在计算长周期队列留存与回收模型…</div></div>
+    </section>
   `;
 
   const funnelBody = $("#ops-funnel-body", container) as HTMLElement;
   const pacingBody = $("#ops-pacing-body", container) as HTMLElement;
+  const cohortBody = $("#ops-cohort-body", container) as HTMLElement;
   const platTabs = $("#ops-platform-tabs", container) as HTMLElement;
+  const currTabs = $("#ops-cohort-currency", container) as HTMLElement;
+  const daysTabs = $("#ops-cohort-days", container) as HTMLElement;
 
   async function loadData() {
     const qs = selectedPlatform ? `?platform=${encodeURIComponent(selectedPlatform)}` : "";
     try {
-      const [funnel, pacing] = await Promise.all([
+      const [funnel, pacing, cohort] = await Promise.all([
         request(`/cms/agent/ops/funnel${qs}`),
-        request(`/cms/agent/ops/pacing${qs}`)
+        request(`/cms/agent/ops/pacing${qs}`),
+        request(`/cms/agent/overseas/cohort?platform=${encodeURIComponent(selectedPlatform)}&days=${selectedCohortDays}&currency=${encodeURIComponent(selectedCurrency)}`)
       ]);
       if (!container.isConnected) return;
       renderFunnel(funnelBody, funnel, onDiagnose);
       renderPacing(pacingBody, pacing, onDiagnose);
+      renderCohort(cohortBody, cohort, onDiagnose);
     } catch (err: any) {
       if (container.isConnected) {
         errorIn(funnelBody, err?.message || "加载漏斗数据失败");
         errorIn(pacingBody, err?.message || "加载预算监控失败");
+        errorIn(cohortBody, err?.message || "加载队列留存失败");
       }
     }
   }
@@ -108,8 +140,105 @@ export function mountOverviewInsights(container: HTMLElement, onDiagnose: (campa
     };
   });
 
+  currTabs.querySelectorAll<HTMLButtonElement>("[data-curr]").forEach(btn => {
+    btn.onclick = () => {
+      selectedCurrency = btn.dataset.curr || "USD";
+      currTabs.querySelectorAll<HTMLButtonElement>("[data-curr]").forEach(b => {
+        b.className = b === btn ? "button small" : "button secondary small";
+      });
+      loadData();
+    };
+  });
+
+  daysTabs.querySelectorAll<HTMLButtonElement>("[data-days]").forEach(btn => {
+    btn.onclick = () => {
+      selectedCohortDays = Number(btn.dataset.days || 14);
+      daysTabs.querySelectorAll<HTMLButtonElement>("[data-days]").forEach(b => {
+        b.className = b === btn ? "button small" : "button secondary small";
+      });
+      loadData();
+    };
+  });
+
   loadData();
 }
+
+function renderCohort(target: HTMLElement, data: any, onDiagnose: (cid: string, btn: HTMLElement) => void) {
+  const summary = data?.summary || {};
+  const cohorts = data?.cohorts || [];
+  const sym = summary.currencySymbol || "$";
+
+  const kpisHtml = `
+    <div class="cohort-summary-grid">
+      <div class="cohort-summary-card">
+        <div class="label">累计队列花费</div>
+        <div class="val">${e(sym)}${numeric(summary.totalSpend || 0)}</div>
+      </div>
+      <div class="cohort-summary-card">
+        <div class="label">获客规模 (Acquisitions)</div>
+        <div class="val">${numeric(summary.totalAcquisitions || 0)}</div>
+      </div>
+      <div class="cohort-summary-card">
+        <div class="label">平均获客成本 (CAC)</div>
+        <div class="val">${e(sym)}${numeric(summary.avgCac || 0)}</div>
+      </div>
+      <div class="cohort-summary-card">
+        <div class="label">平均回本周期 (Payback)</div>
+        <div class="val">${numeric(summary.avgPaybackDays || 0)} <span style="font-size:13px;font-weight:600">天</span></div>
+      </div>
+      <div class="cohort-summary-card">
+        <div class="label">30日预计 LTV / CAC</div>
+        <div class="val" style="color:#087c69">${numeric(summary.ltvCacRatio || 0)}x</div>
+      </div>
+      <div class="cohort-summary-card">
+        <div class="label">D0 → D7 → D30 ROAS</div>
+        <div class="val" style="font-size:15px">${numeric(summary.avgD0Roas || 0)}x → ${numeric(summary.avgD7Roas || 0)}x → ${numeric(summary.avgD30Roas || 0)}x</div>
+      </div>
+    </div>
+    <div class="cohort-narrative">
+      <strong>✦ AI 出海长周期队列策略诊断：</strong>
+      <span>${e(summary.narrative || "")}</span>
+    </div>
+  `;
+
+  const rows = cohorts.map((c: any) => {
+    const d0Class = c.d0Roas >= 1.0 ? "cohort-cell-win" : c.d0Roas >= 0.8 ? "cohort-cell-mid" : "cohort-cell-low";
+    const d1Class = c.d1Roas >= 1.0 ? "cohort-cell-win" : c.d1Roas >= 0.8 ? "cohort-cell-mid" : "cohort-cell-low";
+    const d3Class = c.d3Roas >= 1.0 ? "cohort-cell-win" : c.d3Roas >= 0.8 ? "cohort-cell-mid" : "cohort-cell-low";
+    const d7Class = c.d7Roas >= 1.0 ? "cohort-cell-win" : c.d7Roas >= 0.8 ? "cohort-cell-mid" : "cohort-cell-low";
+    const d14Class = c.d14Roas >= 1.0 ? "cohort-cell-win" : c.d14Roas >= 0.8 ? "cohort-cell-mid" : "cohort-cell-low";
+    const d30Class = c.d30Roas >= 1.0 ? "cohort-cell-win" : c.d30Roas >= 0.8 ? "cohort-cell-mid" : "cohort-cell-low";
+
+    const statusBadge = c.breakEvenStatus === "RECOVERED"
+      ? toneBadge("已回本", "teal")
+      : c.breakEvenStatus === "PROJECTED_RECOVERED"
+      ? toneBadge("预计回本", "amber")
+      : toneBadge("高危滞后", "red");
+
+    return [
+      `<strong>${e(c.cohortDate)}</strong>`,
+      `<span class="badge gray">${e(c.platform)}</span>`,
+      `<span class="mono">${e(c.currencySymbol || "$")}${numeric(c.spend)}</span>`,
+      `<span class="mono">${numeric(c.acquisitions)}</span>`,
+      `<span class="${d0Class}">${numeric(c.d0Roas)}x <small>(${c.d0Retention}%)</small></span>`,
+      `<span class="${d1Class}">${numeric(c.d1Roas)}x <small>(${c.d1Retention}%)</small></span>`,
+      `<span class="${d3Class}">${numeric(c.d3Roas)}x <small>(${c.d3Retention}%)</small></span>`,
+      `<span class="${d7Class}">${numeric(c.d7Roas)}x <small>(${c.d7Retention}%)</small></span>`,
+      `<span class="${d14Class}">${numeric(c.d14Roas)}x <small>(${c.d14Retention}%)</small></span>`,
+      `<span class="${d30Class}">${numeric(c.d30Roas)}x <small>(${c.d30Retention}%)</small></span>`,
+      `<span class="mono">${c.paybackDays != null ? c.paybackDays + " 天" : "未达标"}</span>`,
+      statusBadge
+    ];
+  });
+
+  const tableHtml = table(
+    ["队列批次", "渠道", "首日花费", "获客数", "D0 ROAS", "D1 ROAS", "D3 ROAS", "D7 ROAS", "D14 ROAS", "D30 ROAS", "回本天数", "回本状态"],
+    rows
+  );
+
+  target.innerHTML = kpisHtml + tableHtml;
+}
+
 
 function renderFunnel(target: HTMLElement, data: any, onDiagnose: (cid: string, btn: HTMLElement) => void) {
   const stages = data?.stages || [];
@@ -588,3 +717,164 @@ export async function renderDaypartingMatrix(container: HTMLElement) {
     if (container.isConnected) errorIn(container, err?.message || "加载分时排期失败");
   }
 }
+
+// ============================================================================
+// 4. Autonomous Unattended Smart Rules Engine (Stop-loss, Scale-up, Fatigue, Off-peak)
+// ============================================================================
+
+const RULE_TYPE_META: Record<string, [string, string]> = {
+  STOP_LOSS: ["空耗止损熔断", "red"],
+  SCALE_UP: ["优质放量追投", "teal"],
+  FATIGUE_ROTATE: ["素材疲劳轮换", "amber"],
+  OFF_PEAK_SAVER: ["非高峰节能巡航", "gray"]
+};
+
+const ACTION_TYPE_LABELS: Record<string, string> = {
+  PAUSE_CAMPAIGN: "自动暂停活动 (PAUSE)",
+  ADJUST_BUDGET: "阶梯递增/降低日预算",
+  SWAP_CREATIVE: "下线疲劳素材并切换备用",
+  NOTIFY_ONLY: "发送飞书/钉钉预警"
+};
+
+export async function renderSmartAutomationRules(container: HTMLElement) {
+  async function reload() {
+    container.innerHTML = `<div class="placeholder">正在加载无人值守自动化规则中心与执行日志…</div>`;
+    try {
+      const [rules, logs] = await Promise.all([
+        requestList("/cms/agent/overseas/automation/rules"),
+        requestList("/cms/agent/overseas/automation/logs?limit=30")
+      ]);
+      if (!container.isConnected) return;
+      renderContent(rules, logs);
+    } catch (err: any) {
+      if (container.isConnected) errorIn(container, err?.message || "加载自动化规则失败");
+    }
+  }
+
+  function renderContent(rules: any[], logs: any[]) {
+    container.innerHTML = `
+      <div class="alert-center-head">
+        <div>
+          <h2>无人值守自动化智能规则引擎</h2>
+          <p class="sub">针对出海多时区痛点：空耗自动止损熔断、优质活动阶梯提预算、素材疲劳轮换与海外非高峰出价护栏。</p>
+        </div>
+        <div class="action-set">
+          <button type="button" class="button" id="auto-eval-btn">立即执行规则扫描与评估</button>
+          <button type="button" class="button secondary" id="auto-clear-logs-btn">清空执行日志</button>
+        </div>
+      </div>
+
+      <div class="sub-section">
+        <h3>当前生效中的自动化托管策略（共 ${rules.length} 条）</h3>
+        <div class="auto-rules-grid">
+          ${rules.map(r => {
+            const [typeLabel, typeColor] = RULE_TYPE_META[r.ruleType] || [r.ruleType, "gray"];
+            const modeBadge = r.dryRun
+              ? toneBadge("仿真试运行 (Dry Run)", "amber")
+              : toneBadge("全自动执行", "teal");
+            const actionLabel = ACTION_TYPE_LABELS[r.actionType] || r.actionType;
+
+            return `
+              <div class="auto-rule-card">
+                <div class="auto-rule-head">
+                  <div>
+                    <strong>${e(r.name)}</strong>
+                    <div style="margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                      ${toneBadge(typeLabel, typeColor as any)}
+                      <span class="badge gray">${e(r.scopePlatform || "ALL")}</span>
+                      ${modeBadge}
+                    </div>
+                  </div>
+                </div>
+                <div class="auto-rule-desc">
+                  <div><strong>动作：</strong>${e(actionLabel)}</div>
+                  <div style="margin-top:3px"><strong>触发条件：</strong><code class="mono">${e(r.conditionJson)}</code></div>
+                </div>
+                <div class="auto-rule-actions">
+                  <span class="secondary-text">已触发 <strong>${r.triggerCount || 0}</strong> 次 · ${r.lastTriggeredAt ? e(r.lastTriggeredAt.substring(5, 16)) : "尚未触发"}</span>
+                  <div class="action-set">
+                    <button type="button" class="button secondary small" data-toggle-dryrun="${r.id}" data-current="${r.dryRun}">
+                      ${r.dryRun ? "切为自动执行" : "切为仿真试运行"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+
+      <div class="sub-section" style="margin-top:24px">
+        <div class="panel-head">
+          <div>
+            <h3>自动化规则执行与仿真日志流水</h3>
+            <p class="sub">按时间倒序追踪系统自动发现的触发现象与采取的动作明细。</p>
+          </div>
+        </div>
+        <div id="auto-logs-wrap">
+          ${logs.length === 0
+            ? '<div class="placeholder">暂无规则触发记录，点击上方「立即执行规则扫描与评估」进行即时扫描。</div>'
+            : table(
+                ["时间", "触发规则", "目标活动", "渠道", "触发原因", "执行动作", "运行模式", "执行状态"],
+                logs.map(l => [
+                  `<span class="mono">${e(String(l.createdAt || "").substring(5, 19))}</span>`,
+                  `<strong>${e(l.ruleName)}</strong>`,
+                  `<strong>${e(l.campaignName || l.campaignId)}</strong><br><small class="mono muted">${e(l.campaignId)}</small>`,
+                  `<span class="badge gray">${e(l.platform || "ALL")}</span>`,
+                  `<span>${e(l.triggerReason)}</span>`,
+                  `<strong>${e(l.actionTaken)}</strong>`,
+                  l.isSimulated ? toneBadge("仿真试运行", "amber") : toneBadge("自动执行", "teal"),
+                  toneBadge(l.executionStatus === "SUCCESS" ? "成功" : l.executionStatus, "teal")
+                ])
+              )}
+        </div>
+      </div>
+    `;
+
+    $("#auto-eval-btn", container).onclick = (ev) => {
+      busy(ev.currentTarget as HTMLButtonElement, async () => {
+        const res = await request("/cms/agent/overseas/automation/evaluate", { body: {} });
+        toast(`自动化规则评估完成：已扫描 ${res.evaluatedRules} 条规则，发现 ${res.triggeredCount} 个匹配活动`);
+        reload();
+      });
+    };
+
+    $("#auto-clear-logs-btn", container).onclick = (ev) => {
+      busy(ev.currentTarget as HTMLButtonElement, async () => {
+        await request("/cms/agent/overseas/automation/logs/clear", { body: {} });
+        toast("已清空执行日志");
+        reload();
+      });
+    };
+
+    container.querySelectorAll<HTMLButtonElement>("[data-toggle-dryrun]").forEach(btn => {
+      btn.onclick = () => {
+        busy(btn, async () => {
+          const id = Number(btn.dataset.toggleDryrun);
+          const currentDryRun = btn.dataset.current === "true";
+          const rule = rules.find(r => r.id === id);
+          if (rule) {
+            await request("/cms/agent/overseas/automation/rules", {
+              body: {
+                id: rule.id,
+                name: rule.name,
+                ruleType: rule.ruleType,
+                scopePlatform: rule.scopePlatform,
+                conditionJson: rule.conditionJson,
+                actionType: rule.actionType,
+                actionParamsJson: rule.actionParamsJson,
+                dryRun: !currentDryRun,
+                enabled: rule.enabled
+              }
+            });
+            toast(`已更新规则运行模式为：${!currentDryRun ? "仿真试运行" : "全自动执行"}`);
+            reload();
+          }
+        });
+      };
+    });
+  }
+
+  reload();
+}
+

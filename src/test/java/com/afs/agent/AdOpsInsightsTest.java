@@ -159,6 +159,69 @@ class AdOpsInsightsTest {
         assertThat(json.readTree(attrResp.body()).path("lessons").size()).isGreaterThanOrEqualTo(3);
     }
 
+    @Test
+    void verifiesOverseasLocalizationCohortAndSmartAutomation() throws Exception {
+        // 1. Currencies exchange rates & symbols
+        var currResp = get("/cms/agent/overseas/currencies");
+        assertThat(currResp.statusCode()).isEqualTo(200);
+        JsonNode curr = json.readTree(currResp.body());
+        assertThat(curr.path("rates").path("USD").asDouble()).isEqualTo(1.0);
+        assertThat(curr.path("rates").path("CNY").asDouble()).isGreaterThan(7.0);
+        assertThat(curr.path("symbols").path("EUR").asText()).isEqualTo("€");
+
+        // 2. Multilingual DCO generation & Policy compliance radar
+        var genResp = post("/cms/agent/overseas/localization/generate", """
+                {"campaignId":"demo-1","topic":"Solar Power Battery","targetCountry":"DE","targetLanguage":"de-DE","platform":"Google"}
+                """);
+        assertThat(genResp.statusCode()).isEqualTo(200);
+        JsonNode genNode = json.readTree(genResp.body());
+        assertThat(genNode.path("count").asInt()).isEqualTo(3);
+        assertThat(genNode.path("country").asText()).isEqualTo("DE");
+        assertThat(genNode.path("drafts").get(0).path("complianceScore").asInt()).isGreaterThanOrEqualTo(60);
+
+        // 3. Policy compliance radar audit on clean vs violating copy
+        var cleanAudit = post("/cms/agent/overseas/localization/audit", """
+                {"text":"Certified solar inverter solution with transparent pricing and online calculator.","platform":"Google","targetCountry":"US"}
+                """);
+        assertThat(cleanAudit.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(cleanAudit.body()).path("riskScore").asInt()).isGreaterThanOrEqualTo(80);
+
+        var badAudit = post("/cms/agent/overseas/localization/audit", """
+                {"text":"100% guaranteed profit! Are you broke? BUY NOW RIGHT HERE!!!!!!","platform":"Meta","targetCountry":"US"}
+                """);
+        assertThat(badAudit.statusCode()).isEqualTo(200);
+        JsonNode badNode = json.readTree(badAudit.body());
+        assertThat(badNode.path("riskScore").asInt()).isLessThan(80);
+        assertThat(badNode.path("flaggedTokens").size()).isGreaterThan(0);
+        assertThat(badNode.path("aiRevisionSuggestion").asText()).isNotBlank();
+
+        // 4. Cohort Retention & D0-D30 Payback Analyzer
+        var cohortResp = get("/cms/agent/overseas/cohort?days=14&currency=USD");
+        assertThat(cohortResp.statusCode()).isEqualTo(200);
+        JsonNode cohortNode = json.readTree(cohortResp.body());
+        assertThat(cohortNode.path("cohorts").size()).isEqualTo(14);
+        assertThat(cohortNode.path("summary").path("avgPaybackDays").asDouble()).isGreaterThan(0.0);
+        assertThat(cohortNode.path("summary").path("ltvCacRatio").asDouble()).isGreaterThan(1.0);
+        assertThat(cohortNode.path("summary").path("narrative").asText()).contains("Cohort");
+
+        // 5. Autonomous smart automation rules CRUD & evaluation
+        var rulesResp = get("/cms/agent/overseas/automation/rules");
+        assertThat(rulesResp.statusCode()).isEqualTo(200);
+        JsonNode rules = json.readTree(rulesResp.body());
+        assertThat(rules.size()).isGreaterThanOrEqualTo(4);
+
+        var evalResp = post("/cms/agent/overseas/automation/evaluate", "{}");
+        assertThat(evalResp.statusCode()).isEqualTo(200);
+        JsonNode evalNode = json.readTree(evalResp.body());
+        assertThat(evalNode.path("evaluatedRules").asInt()).isGreaterThanOrEqualTo(4);
+        assertThat(evalNode.path("events").isArray()).isTrue();
+
+        var logsResp = get("/cms/agent/overseas/automation/logs?limit=10");
+        assertThat(logsResp.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(logsResp.body()).isArray()).isTrue();
+    }
+
+
     private HttpResponse<String> get(String path) throws Exception {
         var req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).GET().build();
         return client.send(req, HttpResponse.BodyHandlers.ofString());

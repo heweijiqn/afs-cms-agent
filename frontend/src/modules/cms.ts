@@ -7,7 +7,7 @@ import { setReportChoices, wireReportChoices } from "./report-options.js";
 import { ruleSummary } from "./rule-editor.js";
 import { loadSiteFilter, loadSiteSelect, adPlatforms } from "./form-choices.js";
 import { focusAgentRun, openAgentTab } from "./agent.js";
-import { mountOverviewInsights, renderAlertCenter, renderDaypartingMatrix } from "./ops-insights.js";
+import { mountOverviewInsights, renderAlertCenter, renderDaypartingMatrix, renderSmartAutomationRules } from "./ops-insights.js";
 
 const size = 10;
 const state = {
@@ -518,13 +518,14 @@ export async function collection(target, context, view, isCurrent) {
   const model = state[view];
   const [title, subtitle, filterTitle] = viewMeta[view];
 
-  // Rules view supports 3 integrated strategy tabs: auto rules / alert rules / 7x24 dayparting
+  // Rules view supports 4 integrated strategy tabs: auto rules / alert rules / 7x24 dayparting / smart-auto
   if (view === "rules" && !simulated) {
     const activeTab = model.tab || "auto";
     const tabBar = `<div class="agent-tabs" id="rules-subtabs" role="tablist">
       <button type="button" class="tab-btn" aria-pressed="${activeTab === "auto"}" data-rules-tab="auto">自动化调价规则</button>
       <button type="button" class="tab-btn" aria-pressed="${activeTab === "alerts"}" data-rules-tab="alerts">实时预警与通知</button>
       <button type="button" class="tab-btn" aria-pressed="${activeTab === "dayparting"}" data-rules-tab="dayparting">7×24 分时排期</button>
+      <button type="button" class="tab-btn" aria-pressed="${activeTab === "smart-auto"}" data-rules-tab="smart-auto">无人值守自动化规则</button>
     </div>`;
     if (activeTab !== "auto") {
       target.innerHTML = pageHead(title, subtitle, "") + tabBar + `<section class="panel" id="rules-ext-panel"></section>`;
@@ -536,7 +537,8 @@ export async function collection(target, context, view, isCurrent) {
       });
       const panel = $("#rules-ext-panel", target);
       if (activeTab === "alerts") await renderAlertCenter(panel);
-      else await renderDaypartingMatrix(panel);
+      else if (activeTab === "dayparting") await renderDaypartingMatrix(panel);
+      else await renderSmartAutomationRules(panel);
       return;
     }
   }
@@ -568,6 +570,7 @@ export async function collection(target, context, view, isCurrent) {
     <button type="button" class="tab-btn" aria-pressed="true" data-rules-tab="auto">自动化调价规则</button>
     <button type="button" class="tab-btn" aria-pressed="false" data-rules-tab="alerts">实时预警与通知</button>
     <button type="button" class="tab-btn" aria-pressed="false" data-rules-tab="dayparting">7×24 分时排期</button>
+    <button type="button" class="tab-btn" aria-pressed="false" data-rules-tab="smart-auto">无人值守自动化规则</button>
   </div>` : "";
 
   const batchBar = view === "campaigns" && !simulated && context.localCms ? `
