@@ -49,3 +49,10 @@ client_secret*.json
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
+
+# QA test artifacts and one-off scratch scripts
+tools/qa/out/
+tools/qa/_*
+tools/qa/__pycache__/
+__pycache__/
+*.pyc
