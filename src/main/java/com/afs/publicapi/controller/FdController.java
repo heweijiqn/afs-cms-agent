@@ -21,6 +21,8 @@ public class FdController {
 
     @Autowired
     FdMapper fdMapper;
+    @Autowired
+    com.afs.service.LocalApiEventStore localApiEventStore;
 
     @Data
     public static class AddBody {
@@ -39,6 +41,8 @@ public class FdController {
         Fd info = toFd(body, site);
         int n = fdMapper.add(info);
         if (n > 0) {
+            localApiEventStore.record("feedback", site,
+                    java.util.Map.of("value", body.getValue(), "rate", body.getRate(), "locale", body.getLocale()));
             return ResponseUtils.ok();
         } else {
             return ResponseUtils.result("更新失败");

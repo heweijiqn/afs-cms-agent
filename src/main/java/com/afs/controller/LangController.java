@@ -13,7 +13,6 @@ import java.util.*;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/lang")
 public class LangController {
     
@@ -35,7 +34,7 @@ public class LangController {
         if (n > 0) {
             return ResponseUtils.ok();
         } else {
-            return ResponseUtils.result("更新失败");
+            return ResponseUtils.error(-1, "更新失败");
         }
     }
 

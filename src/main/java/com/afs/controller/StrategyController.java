@@ -14,7 +14,6 @@ import java.util.Map;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/strategy")
 public class StrategyController {
 

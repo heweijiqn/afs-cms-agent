@@ -21,7 +21,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/adsense/account")
 public class AdsenseAccountController {
 
@@ -61,39 +60,32 @@ public class AdsenseAccountController {
     @PostMapping("/list")
     public ResponseUtils.Result getAdsenseAccountList(@RequestBody @Valid ListRequest request) {
         Page page = new Page();
-        page.size = Math.max(10, request.getPageSize());
+        page.size = Math.min(100, Math.max(1, request.getPageSize()));
         page.index = request.getPageIndex();
-        int offset = Math.max(0, (request.getPageIndex() - 1)) * request.getPageSize();
-        List<AdsenseAccount> adsenseAccountList = adsenseAccountMapper.getListByQuery(offset, request.getPageSize());
+        int offset = Math.max(0, (request.getPageIndex() - 1)) * page.size;
+        List<AdsenseAccount> adsenseAccountList = adsenseAccountMapper.getListByQuery(offset, page.size);
         page.list = adsenseAccountList.stream().map(e -> toAdsenseAccountVO(e)).collect(Collectors.toList());
         page.totalSize = adsenseAccountMapper.countByQuery();
-        page.maxIndex = page.totalSize / request.getPageSize();
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 
     @GetMapping("/pubId/list")
     public ResponseUtils.Result getPubIdList() {
         List<Map<String, String>> list = new ArrayList<>();
-        Map<String, String> mapAdsenseData = new HashMap<>();
-        mapAdsenseData.put("value", "partner-" + AdsenseReportService.adsenseDataMap.get("pubId"));
-        mapAdsenseData.put("label", AdsenseReportService.adsenseDataMap.get("pubId"));
-        list.add(mapAdsenseData);
-        Map<String, String> mapCccData = new HashMap<>();
-        mapCccData.put("value", "partner-" + AdsenseReportService.cccAfsMap.get("pubId"));
-        mapCccData.put("label", AdsenseReportService.cccAfsMap.get("pubId"));
-        list.add(mapCccData);
-        Map<String, String> mapBestReplyData = new HashMap<>();
-        mapBestReplyData.put("value", "partner-" + AdsenseReportService.bestreplyMap.get("pubId"));
-        mapBestReplyData.put("label", AdsenseReportService.bestreplyMap.get("pubId"));
-        list.add(mapBestReplyData);
-        Map<String, String> mapInfozoneData = new HashMap<>();
-        mapInfozoneData.put("value", "partner-" + AdsenseReportService.infozoneaiMap.get("pubId"));
-        mapInfozoneData.put("label", AdsenseReportService.infozoneaiMap.get("pubId"));
-        list.add(mapInfozoneData);
-        Map<String, String> mapValibooksData = new HashMap<>();
-        mapValibooksData.put("value", "partner-" + AdsenseReportService.valibooksMap.get("pubId"));
-        mapValibooksData.put("label", AdsenseReportService.valibooksMap.get("pubId"));
-        list.add(mapValibooksData);
+        for (String pubId : adsenseAccountMapper.listDistinctPubIds()) {
+            if (pubId == null || pubId.isBlank()) continue;
+            Map<String, String> item = new LinkedHashMap<>();
+            item.put("value", pubId);
+            item.put("label", pubId);
+            list.add(item);
+        }
+        if (list.isEmpty()) {
+            Map<String, String> fallback = new LinkedHashMap<>();
+            fallback.put("value", "partner-");
+            fallback.put("label", "未配置 publisher ID");
+            list.add(fallback);
+        }
         return ResponseUtils.result(list);
     }
 
@@ -108,6 +100,12 @@ public class AdsenseAccountController {
 //    @NoAuth
     @PostMapping("/add")
     public ResponseUtils.Result add(@RequestBody @Valid AddBody body) {
+        if (!body.getPubId().matches("(partner-)?pub-[0-9]+")) {
+            return ResponseUtils.error(-1, "pubId 格式不正确，应为 pub-数字 或 partner-pub-数字");
+        }
+        for (String site : body.getSiteList()) {
+            if (!SiteController.sites().contains(site)) return ResponseUtils.error(-1, "未知站点: " + site);
+        }
         if (adsenseAccountMapper.countByPubId(body.getPubId()) > 0) {
             return ResponseUtils.error(-1, "该pubId已存在");
         }

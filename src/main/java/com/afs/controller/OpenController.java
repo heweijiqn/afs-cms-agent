@@ -27,7 +27,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/open")
 public class OpenController {
     @org.springframework.beans.factory.annotation.Value("${afs.local-workspace:false}")

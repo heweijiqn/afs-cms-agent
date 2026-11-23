@@ -26,7 +26,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/adsense/channel")
 public class AdsenseChannelController {
 
@@ -155,14 +154,14 @@ public class AdsenseChannelController {
     @PostMapping("/list")
     public ResponseUtils.Result getList(@RequestBody @Valid ListRequest request) {
         Page page = new Page();
-        page.size = Math.max(10, request.getPageSize());
+        page.size = Math.min(100, Math.max(1, request.getPageSize()));
         page.index = request.getPageIndex();
-        int offset = Math.max(0, (request.getPageIndex() - 1)) * request.getPageSize();
+        int offset = Math.max(0, (request.getPageIndex() - 1)) * page.size;
         List<AdsenseChannel> adsenseChannelList = adsenseChannelMapper.getListByQuery(request.getState(), request.getPubId(), request.getChannelId(),
-                offset, request.getPageSize());
+                offset, page.size);
         page.list = adsenseChannelList.stream().map(e -> toAdsenseChannelVO(e)).collect(Collectors.toList());
         page.totalSize = adsenseChannelMapper.countByQuery(request.getState(), request.getPubId(), request.getChannelId());
-        page.maxIndex = page.totalSize / request.getPageSize();
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 }

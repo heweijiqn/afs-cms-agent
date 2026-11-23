@@ -21,6 +21,8 @@ public class KeywordReportController {
 
     @Autowired
     KeywordReportDateMapper keywordReportDateMapper;
+    @Autowired
+    com.afs.service.LocalApiEventStore localApiEventStore;
 
     @Data
     public static class AddBody{
@@ -44,6 +46,8 @@ public class KeywordReportController {
         log.info("add site={}, body={}", site, body);
         KeywordReportData data = toReportData(body);
         keywordReportDateMapper.add(data);
+        localApiEventStore.record("keyword", site,
+                java.util.Map.of("articleId", body.getArticleId(), "keyword", body.getKeyword()));
         return ResponseUtils.ok();
     }
 }

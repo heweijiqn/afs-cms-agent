@@ -17,7 +17,6 @@ import java.util.Map;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms")
 public class CountryController {
 
@@ -36,8 +35,9 @@ public class CountryController {
         List<Region> list = new ArrayList<>();
         for (String key : countryService.getCodeCountryMap().keySet()) {
             Region r = new Region();
-            r.setRegionCode(key);
-            r.setName(countryService.getCodeCountryMap().get(key));
+            // The service map is countryName -> ISO code; expose code -> countryName.
+            r.setRegionCode(countryService.getCodeCountryMap().get(key));
+            r.setName(key);
             list.add(r);
         }
         resultMap.put("list", list);

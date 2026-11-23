@@ -12,7 +12,6 @@ import java.util.Arrays;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/am")
 public class AmController {
 

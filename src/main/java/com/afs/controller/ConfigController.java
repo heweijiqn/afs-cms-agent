@@ -19,7 +19,6 @@ import java.util.List;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/config")
 public class ConfigController {
 
@@ -46,7 +45,7 @@ public class ConfigController {
         if (n > 0) {
             return ResponseUtils.ok();
         } else {
-            return ResponseUtils.result("更新失败");
+            return ResponseUtils.error(-1, "更新失败");
         }
     }
 
@@ -79,7 +78,7 @@ public class ConfigController {
         if (n > 0) {
             return ResponseUtils.ok();
         } else {
-            return ResponseUtils.result("更新失败");
+            return ResponseUtils.error(-1, "更新失败");
         }
     }
 
@@ -95,12 +94,12 @@ public class ConfigController {
     @PostMapping("/list")
     public ResponseUtils.Result getList(@RequestBody @Valid GetBody body) {
         Page page = new Page();
-        page.size = Math.max(10, body.getPageSize());
+        page.size = Math.min(100, Math.max(1, body.getPageSize()));
         page.index = body.getPageIndex();
-        int offset = Math.max(0, (body.getPageIndex() - 1)) * body.getPageSize();
-        page.list = configMapper.getList(body.getSite(), SiteController.sites(), offset, body.getPageSize());
+        int offset = Math.max(0, (body.getPageIndex() - 1)) * page.size;
+        page.list = configMapper.getList(body.getSite(), SiteController.sites(), offset, page.size);
         page.totalSize = configMapper.count(body.getSite(), SiteController.sites());
-        page.maxIndex = page.totalSize / body.getPageSize();
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 }

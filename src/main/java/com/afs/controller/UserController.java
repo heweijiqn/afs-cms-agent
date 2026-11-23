@@ -27,7 +27,6 @@ import java.util.Set;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms")
 public class UserController {
 

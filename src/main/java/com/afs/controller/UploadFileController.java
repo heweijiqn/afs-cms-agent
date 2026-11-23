@@ -22,7 +22,6 @@ import java.util.Map;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms")
 public class UploadFileController {
     private static final String uploadUrl = System.getenv().getOrDefault("AFS_MEDIA_UPLOAD_URL", "");

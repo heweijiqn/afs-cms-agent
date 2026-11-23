@@ -13,7 +13,6 @@ import javax.validation.constraints.NotBlank;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/feedback")
 public class FdController {
 
@@ -32,12 +31,12 @@ public class FdController {
     @PostMapping("/list")
     public ResponseUtils.Result getList(@RequestBody GetBody body) {
         Page page = new Page();
-        page.size = Math.max(10, body.getPageSize());
+        page.size = Math.min(100, Math.max(1, body.getPageSize()));
         page.index = body.getPageIndex();
-        int offset = Math.max(0, (body.getPageIndex() - 1)) * body.getPageSize();
-        page.list = fdMapper.getList(body.getSite(), SiteController.sites(), offset, body.getPageSize());
+        int offset = Math.max(0, (body.getPageIndex() - 1)) * page.size;
+        page.list = fdMapper.getList(body.getSite(), SiteController.sites(), offset, page.size);
         page.totalSize = fdMapper.count(body.getSite(), SiteController.sites());
-        page.maxIndex = page.totalSize / body.getPageSize();
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 }

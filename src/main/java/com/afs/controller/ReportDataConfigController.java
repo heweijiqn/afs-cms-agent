@@ -15,7 +15,6 @@ import javax.validation.constraints.NotBlank;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/report/config")
 public class ReportDataConfigController {
 
@@ -28,6 +27,7 @@ public class ReportDataConfigController {
         String value;
         @NotBlank
         String channel;
+        String oldChannel;
         @NotBlank
         String desc;
         @NotBlank
@@ -42,7 +42,7 @@ public class ReportDataConfigController {
         if (n > 0) {
             return ResponseUtils.ok();
         } else {
-            return ResponseUtils.result("更新失败");
+            return ResponseUtils.error(-1, "更新失败");
         }
     }
 
@@ -51,6 +51,7 @@ public class ReportDataConfigController {
         info.setValue(body.getValue());
         info.setDesc(body.getDesc());
         info.setChannel(body.getChannel());
+        info.setOldChannel(body.getOldChannel());
         info.setSite(body.getSite());
         return info;
     }
@@ -75,7 +76,7 @@ public class ReportDataConfigController {
         if (n > 0) {
             return ResponseUtils.ok();
         } else {
-            return ResponseUtils.result("更新失败");
+            return ResponseUtils.error(-1, "更新失败");
         }
     }
 
@@ -92,12 +93,12 @@ public class ReportDataConfigController {
     @PostMapping("/list")
     public ResponseUtils.Result getList(@RequestBody GetBody body) {
         Page page = new Page();
-        page.size = Math.max(10, body.getPageSize());
+        page.size = Math.min(100, Math.max(1, body.getPageSize()));
         page.index = body.getPageIndex();
-        int offset = Math.max(0, (body.getPageIndex() - 1)) * body.getPageSize();
-        page.list = reportDataMapper.getList(body.getSite(), body.channel, SiteController.sites(), offset, body.getPageSize());
+        int offset = Math.max(0, (body.getPageIndex() - 1)) * page.size;
+        page.list = reportDataMapper.getList(body.getSite(), body.channel, SiteController.sites(), offset, page.size);
         page.totalSize = reportDataMapper.count(body.getSite(), body.channel, SiteController.sites());
-        page.maxIndex = page.totalSize / body.getPageSize();
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 }

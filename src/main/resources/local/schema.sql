@@ -447,3 +447,7 @@ ALTER TABLE meta_data ADD COLUMN IF NOT EXISTS advertiser VARCHAR(128);
 CREATE UNIQUE INDEX IF NOT EXISTS article_info_article_id ON article_info(article_id);
 CREATE UNIQUE INDEX IF NOT EXISTS category_site_value ON category(site, `value`);
 CREATE UNIQUE INDEX IF NOT EXISTS app_info_app_id ON app_info(app_id);
+ALTER TABLE `article_info` ADD COLUMN IF NOT EXISTS auditor VARCHAR(64) DEFAULT '';
+ALTER TABLE `article_info` ADD COLUMN IF NOT EXISTS audit_time TIMESTAMP;
+ALTER TABLE `ad_resource` ADD COLUMN IF NOT EXISTS auditor VARCHAR(64) DEFAULT '';
+ALTER TABLE `ad_resource` ADD COLUMN IF NOT EXISTS audit_time TIMESTAMP;

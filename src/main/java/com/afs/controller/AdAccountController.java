@@ -29,7 +29,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/ad/account/info")
 public class AdAccountController {
 
@@ -50,15 +49,15 @@ public class AdAccountController {
     @PostMapping("/list")
     public ResponseUtils.Result getList(@RequestBody @Valid AdInfoRequest request) {
         Page page = new Page();
-        page.size = Math.max(10, request.getPageSize());
+        page.size = Math.min(100, Math.max(1, request.getPageSize()));
         page.index = request.getPageIndex();
-        int offset = Math.max(0, (request.getPageIndex() - 1)) * request.getPageSize();
+        int offset = Math.max(0, (request.getPageIndex() - 1)) * page.size;
 
-        List<AdAccountInfo> list = adAccountInfoMapper.getListByQuery(offset, request.getPageSize());
+        List<AdAccountInfo> list = adAccountInfoMapper.getListByQuery(offset, page.size);
         page.list = list.stream().map(e -> toAdAccountInfoVO(e)).collect(Collectors.toList());
 
         page.totalSize = adAccountInfoMapper.countByQuery();
-        page.maxIndex = page.totalSize / request.getPageSize();
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 

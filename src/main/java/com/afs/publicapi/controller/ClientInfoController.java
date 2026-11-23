@@ -27,6 +27,8 @@ public class ClientInfoController {
 
     @Autowired
     IpInfoMapper ipInfoMapper;
+    @Autowired
+    com.afs.service.LocalApiEventStore localApiEventStore;
 
     @Data
     public static class AddBody {
@@ -41,6 +43,7 @@ public class ClientInfoController {
         IpInfo info = toClientInfo(body, site);
         int n = ipInfoMapper.add(info);
         if (n > 0) {
+            localApiEventStore.record("ip", site, java.util.Map.of("ip", body.getIp()));
             return ResponseUtils.ok();
         } else {
             return ResponseUtils.result("更新失败");

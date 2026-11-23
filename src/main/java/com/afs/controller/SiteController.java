@@ -12,7 +12,6 @@ import java.util.List;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/site")
 public class SiteController {
     @GetMapping("/list")

@@ -27,7 +27,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/ad/resource")
 public class AdResourceController {
 
@@ -73,9 +72,9 @@ public class AdResourceController {
     public ResponseUtils.Result getList(@RequestHeader(Consts.HeaderUserName) String userName, @RequestBody @Valid AdResourceRequest request,
                                         @RequestParam int pageIndex, @RequestParam int pageSize) {
         Page page = new Page();
-        page.size = Math.max(10, pageSize);
+        page.size = Math.min(100, Math.max(1, pageSize));
         page.index = pageIndex;
-        int offset = Math.max(0, (pageIndex - 1)) * pageSize;
+        int offset = Math.max(0, (pageIndex - 1)) * page.size;
 
         String partner = "";
         User user = userMapper.get(userName);
@@ -89,12 +88,12 @@ public class AdResourceController {
 
         List<AdResource> adResourceList = adResourceMapper.getListByQuery(request.getChannelId(),
                 request.getAdResourceId(), request.getArticleId(), partner, request.getAm(), request.getAdPlatform(),
-                request.getSite(), request.getState(), request.getCampaign(), orderParam, orderDirection, offset, pageSize);
+                request.getSite(), request.getState(), request.getCampaign(), orderParam, orderDirection, offset, page.size);
         page.list = adResourceList.stream().map(e -> toAdResourceVO(e)).collect(Collectors.toList());
 
         page.totalSize = adResourceMapper.countByQuery(request.getChannelId(), request.getAdResourceId(), request.getArticleId(),
                 partner, request.getAm(), request.getAdPlatform(), request.getSite(), request.getState(), request.getCampaign());
-        page.maxIndex = page.totalSize / pageSize;
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 
@@ -328,7 +327,7 @@ public class AdResourceController {
         adResource.setPartner(user.getPartner());
         adResource.setStatus(AdResource.StatusEnabled);
 
-        if (user.getAutoCampaign()) {
+        if (user.getAutoCampaign() || user.getRoot() == User.RootUser) {
             String site = articleInfoMapper.getSiteByArticleId(adResource.getArticleId());
             log.info("getChannelId site={}", site);
             String channelId = getAutoAuditChannelId(site);
@@ -346,7 +345,7 @@ public class AdResourceController {
             adResourceMapper.add(adResource);
             String content = "Auditing Campaign! userName=" + userName + ". campaignId=" + arsId + ". partner=" + user.partner;
             feishuReportService.reportUserAlert(content, FeishuReportService.mAuditAlertUrl);
-            return ResponseUtils.ok();
+            return ResponseUtils.result(new java.util.LinkedHashMap<>(java.util.Map.of("adResourceId", arsId)));
         }
     }
 
@@ -452,7 +451,8 @@ public class AdResourceController {
         if (!body.getBidPriceType().equals("BID_TYPE_NO_BID") && body.getBidPriceValue() == null) {
             return ResponseUtils.error(-1, "请设置出价");
         }
-        if (body.getIsSmartCreative() && !Arrays.asList("PLACEMENT_PANGLE", "PLACEMENT_TIKTOK").containsAll(body.getPlacementList())) {
+        if (body.getIsSmartCreative() && !(body.getPlacementList().contains("PLACEMENT_PANGLE")
+                && body.getPlacementList().contains("PLACEMENT_TIKTOK"))) {
             return ResponseUtils.error(-1, "smart creative placement is not right");
         }
         boolean local = environment.acceptsProfiles(Profiles.of("local-cms"));
@@ -526,7 +526,7 @@ public class AdResourceController {
         infoMap.put("pixelId", pixelMap.get("pixelId"));
         adResource.setAdPlatformInfo(JsonUtils.toJsonString(infoMap));
 
-        if (user.getAutoCampaign()) {
+        if (user.getAutoCampaign() || user.getRoot() == User.RootUser) {
             String site = articleInfoMapper.getSiteByArticleId(adResource.getArticleId());
             log.info("getChannelId site={}", site);
             String channelId = getAutoAuditChannelId(site);
@@ -545,7 +545,7 @@ public class AdResourceController {
             adResourceMapper.add(adResource);
             String content = "Auditing Campaign! userName=" + userName + ". campaignId=" + arsId + ". partner=" + user.partner;
             feishuReportService.reportUserAlert(content, FeishuReportService.mAuditAlertUrl);
-            return ResponseUtils.ok();
+            return ResponseUtils.result(new java.util.LinkedHashMap<>(java.util.Map.of("adResourceId", arsId)));
         }
     }
 
@@ -576,6 +576,10 @@ public class AdResourceController {
         if (body.getState().equals(AdResource.PASS) && StringUtils.isBlank(body.getChannelId())) {
             return ResponseUtils.error(-1, "channelId 不合规");
         }
+        if (body.getState().equals(AdResource.PASS)
+                && adsenseChannelMapper.getListByQuery(null, null, body.getChannelId(), 0, 1).isEmpty()) {
+            return ResponseUtils.error(-1, "channelId 不存在或未在当前站点配置");
+        }
         if (body.getState().equals(AdResource.PASS) && StringUtils.isBlank(body.getLandPageUrl())) {
             return ResponseUtils.error(-1, "landPageUrl 不合规");
         }
@@ -592,6 +596,7 @@ public class AdResourceController {
             n = adResourceMapper.auditReject(body.getMsg(), body.getState(), body.getAdResourceId());
         }
         if (n > 0) {
+            adResourceMapper.recordAudit(body.getAdResourceId(), userName);
             return ResponseUtils.ok();
         } else {
             return ResponseUtils.error(-1, "更新失败");
@@ -789,7 +794,7 @@ public class AdResourceController {
             }
             return ResponseUtils.ok();
         } else {
-            return ResponseUtils.result("更新失败");
+            return ResponseUtils.error(-1, "更新失败");
         }
     }
 
@@ -880,6 +885,7 @@ public class AdResourceController {
 
     @GetMapping("/search/info")
     public ResponseUtils.Result searchTitle(@RequestParam String adResourceId) {
+        if (StringUtils.isBlank(adResourceId)) return ResponseUtils.result(new ArrayList<>());
         List<AdResource> list = adResourceMapper.searchAdResourceId(adResourceId);
         List<Map> resultList = new ArrayList<>();
         for (AdResource adResource : list) {
@@ -894,6 +900,7 @@ public class AdResourceController {
 
     @GetMapping("/search/info/campaign")
     public ResponseUtils.Result searchTitleByTitle(@RequestParam String campaign) {
+        if (StringUtils.isBlank(campaign)) return ResponseUtils.result(new ArrayList<>());
         List<AdResource> list = adResourceMapper.searchAdResourceCampaign(campaign);
         List<Map> resultList = new ArrayList<>();
         for (AdResource adResource : list) {

@@ -23,7 +23,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/ad/material")
 public class AdMaterialController {
 
@@ -82,7 +81,8 @@ public class AdMaterialController {
         materialsVO.setType(material.getType());
         materialsVO.setDimension(material.getDimension());
         materialsVO.setRatio(material.getRatio());
-        materialsVO.setCategory(Arrays.asList(material.getCategory().split("-")));
+        materialsVO.setCategory(material.getCategory() == null || material.getCategory().isBlank()
+                ? List.of() : Arrays.asList(material.getCategory().split(",")));
         materialsVO.setTemplate(material.getTemplate());
         materialsVO.setSize(material.getSize());
         materialsVO.setDuration(material.getDuration());
@@ -98,9 +98,9 @@ public class AdMaterialController {
     @PostMapping("/list")
     public ResponseUtils.Result getList(@RequestBody @Valid ListRequest request) {
         Page page = new Page();
-        page.size = Math.max(10, request.getPageSize());
+        page.size = Math.min(100, Math.max(1, request.getPageSize()));
         page.index = request.getPageIndex();
-        int offset = Math.max(0, (request.getPageIndex() - 1)) * request.getPageSize();
+        int offset = Math.max(0, (request.getPageIndex() - 1)) * page.size;
 
         Integer startDur = null;
         Integer endDur = null;
@@ -112,14 +112,14 @@ public class AdMaterialController {
                 endDur = request.getDuration().get(1);
             }
         }
-        String cate = CollectionUtils.isEmpty(request.getCategory()) ? "" : String.join("-", request.getCategory());
+        String cate = CollectionUtils.isEmpty(request.getCategory()) ? "" : String.join(",", request.getCategory());
         List<Material> materialsList = materialsMapper.getListByQuery(cate, request.getCountryList(), startDur, endDur, request.getStartTime() != null ? DateUtils.formatDate(request.getStartTime()) : null,
                 request.getStartTime() != null ? DateUtils.formatDate(request.getEndTime()) : null, request.getRatio(), request.getLang(), request.getType(),
-                request.getKeyword(), offset, request.getPageSize());
+                request.getKeyword(), offset, page.size);
         page.list = materialsList.stream().map(e -> toMaterialsVO(e)).collect(Collectors.toList());
         page.totalSize = materialsMapper.countByQuery(cate, request.getCountryList(), startDur, endDur, request.getStartTime() != null ? DateUtils.formatDate(request.getStartTime()) : null,
                 request.getStartTime() != null ? DateUtils.formatDate(request.getEndTime()) : null,  request.getRatio(), request.getLang(), request.getType(), request.getKeyword());
-        page.maxIndex = page.totalSize / request.getPageSize();
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 
@@ -158,7 +158,7 @@ public class AdMaterialController {
         material.setType(body.getType());
         material.setDimension(body.getDimension());
         material.setRatio(body.getRatio());
-        material.setCategory(String.join("-", body.getCategory()));
+        material.setCategory(String.join(",", body.getCategory()));
         material.setTemplate(body.getTemplate());
         material.setCover(body.getCover());
         material.setUrl(body.getUrl());
@@ -174,8 +174,6 @@ public class AdMaterialController {
         for (AddBody body : bodyList) {
             Material newMaterial = toMaterial(body, userName);
             materialsMapper.add(newMaterial);
-            Material materialDb = materialsMapper.getByAdMaterialId(newMaterial.getAdMaterialId());
-            materialsMapper.updateName(materialDb.getId() + "_" + materialDb.getName(), materialDb.getAdMaterialId());
         }
         return ResponseUtils.ok();
     }
@@ -217,8 +215,13 @@ public class AdMaterialController {
         material.setName(body.getName());
         material.setCountry(CollectionUtils.isEmpty(body.getCountryList()) ? null : String.join(",", body.getCountryList()));
         material.setLang(body.getLang());
-        material.setCategory(String.join("-", body.getCategory()));
+        material.setType(body.getType());
+        material.setDimension(body.getDimension());
+        material.setRatio(body.getRatio());
+        material.setCategory(CollectionUtils.isEmpty(body.getCategory()) ? null : String.join(",", body.getCategory()));
         material.setTemplate(body.getTemplate());
+        material.setCover(body.getCover());
+        material.setUrl(body.getUrl());
         material.setSize(body.getSize());
         material.setDuration(body.getDuration());
         return material;

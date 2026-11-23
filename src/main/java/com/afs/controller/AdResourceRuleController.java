@@ -24,7 +24,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/ad/resource/rule")
 public class AdResourceRuleController {
 
@@ -41,15 +40,15 @@ public class AdResourceRuleController {
     public ResponseUtils.Result getList(@RequestHeader(Consts.HeaderUserName) String userName, @RequestBody @Valid Request request,
                                         @RequestParam int pageIndex, @RequestParam int pageSize) {
         Page page = new Page();
-        page.size = Math.max(10, pageSize);
+        page.size = Math.min(100, Math.max(1, pageSize));
         page.index = pageIndex;
-        int offset = Math.max(0, (pageIndex - 1)) * pageSize;
+        int offset = Math.max(0, (pageIndex - 1)) * page.size;
 
-        List<AdResourceRule> adResourceRuleList = adResourceRuleMapper.getListByQuery(request.getName(), offset, pageSize);
+        List<AdResourceRule> adResourceRuleList = adResourceRuleMapper.getListByQuery(request.getName(), offset, page.size);
         page.list = adResourceRuleList.stream().map(e -> toAdResourceRuleVO(e)).collect(Collectors.toList());
         page.totalSize = adResourceRuleMapper.countByQuery(request.getName());
 
-        page.maxIndex = page.totalSize / pageSize;
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 
@@ -168,7 +167,7 @@ public class AdResourceRuleController {
         if (n > 0) {
             return ResponseUtils.ok();
         } else {
-            return ResponseUtils.result("更新失败");
+            return ResponseUtils.error(-1, "更新失败");
         }
     }
 }

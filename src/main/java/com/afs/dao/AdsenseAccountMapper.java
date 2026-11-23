@@ -39,6 +39,9 @@ public interface AdsenseAccountMapper {
     @Update("update " + Table + " set site = #{site} where `pub_id` = #{pubId}")
     int updateSite(@Param("pubId") String pubId, @Param("site") String site);
 
+    @Select("select distinct pub_id from " + Table + " where status = 1 and pub_id <> '' order by pub_id")
+    List<String> listDistinctPubIds();
+
 }
 
 

@@ -22,10 +22,10 @@ import java.util.*;
 import java.util.stream.Collectors;
 import org.springframework.http.*;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/article")
 public class ArticleController {
 
@@ -88,9 +88,9 @@ public class ArticleController {
     public ResponseUtils.Result getList(@RequestHeader(Consts.HeaderUserName) String userName, @RequestBody @Valid ArticleInfoRequest request,
                                         @RequestParam int pageIndex, @RequestParam int pageSize) {
         Page page = new Page();
-        page.size = Math.max(10, pageSize);
+        page.size = Math.min(100, Math.max(1, pageSize));
         page.index = pageIndex;
-        int offset = Math.max(0, (pageIndex - 1)) * pageSize;
+        int offset = Math.max(0, (pageIndex - 1)) * page.size;
         String partner = "";
         User user = userMapper.get(userName);
         if (user.getRoot() == User.RootUser && StringUtils.isNotEmpty(request.getPartner())) {
@@ -99,11 +99,11 @@ public class ArticleController {
             partner = user.getPartner();
         }
         List<ArticleInfo> articleInfoList =
-                articleInfoMapper.getListByQuery(partner, request.getSite(), request.getArticleId(), request.getTitle(), request.getLang(), request.getState(), offset, pageSize);
+                articleInfoMapper.getListByQuery(partner, request.getSite(), request.getArticleId(), request.getTitle(), request.getLang(), request.getState(), offset, page.size);
         page.list = articleInfoList.stream().map(e -> toArticleInfoRootVO(e)).collect(Collectors.toList());
 
         page.totalSize = articleInfoMapper.countByQuery(partner, request.getSite(), request.getArticleId(), request.getTitle(), request.getLang(), request.getState());
-        page.maxIndex = page.totalSize / pageSize;
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 
@@ -188,7 +188,7 @@ public class ArticleController {
             map.put("articleId", articleId);
             return ResponseUtils.result(map);
         } else {
-            return ResponseUtils.result("更新失败");
+            return ResponseUtils.error(-1, "更新失败");
         }
     }
 
@@ -302,7 +302,7 @@ public class ArticleController {
         if (n > 0) {
             return ResponseUtils.ok();
         } else {
-            return ResponseUtils.result("更新失败");
+            return ResponseUtils.error(-1, "更新失败");
         }
     }
 
@@ -341,6 +341,22 @@ public class ArticleController {
         }
 
         ArticleInfo articleInfo = articleInfoMapper.getByArticleId(body.getArticleId());
+        if (articleInfo == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "文章不存在: " + body.getArticleId());
+        }
+        if (!body.getState().equals(ArticleInfo.PASS) && !body.getState().equals(ArticleInfo.REJECT)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不支持的审核状态: " + body.getState());
+        }
+        if (body.getState().equals(ArticleInfo.PASS)
+                && !ArticleInfo.AUDITING.equals(articleInfo.getState())
+                && !ArticleInfo.UPDATE_AUDITING.equals(articleInfo.getState())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "当前文章状态不允许审核通过: " + articleInfo.getState());
+        }
+        if (body.getState().equals(ArticleInfo.REJECT) && !ArticleInfo.AUDITING.equals(articleInfo.getState())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "当前文章状态不允许驳回: " + articleInfo.getState());
+        }
         int n = 0;
         if (body.getState().equals(ArticleInfo.PASS) && ArticleInfo.AUDITING.equals(articleInfo.getState())) {
             n = articleInfoMapper.auditArticlePass(body.getArticleId(), body.getState(), body.getSite());
@@ -376,6 +392,7 @@ public class ArticleController {
             n = articleInfoMapper.auditArticleReject(body.getArticleId(), ArticleInfo.UPDATE_REJECT, otherInfo);
         }
         if (n > 0) {
+            articleInfoMapper.recordAudit(body.getArticleId(), userName);
             return ResponseUtils.ok();
         } else {
             return ResponseUtils.error(-1, "更新失败");
@@ -402,6 +419,7 @@ public class ArticleController {
 
     @GetMapping("/search/info")
     public ResponseUtils.Result searchArticleId(@RequestParam String articleId) {
+        if (articleId == null || articleId.isBlank()) return ResponseUtils.result(new ArrayList<>());
         List<ArticleInfo> list = articleInfoMapper.searchByArticleId(articleId);
         List<Map> resultList = new ArrayList<>();
         for (ArticleInfo info : list) {

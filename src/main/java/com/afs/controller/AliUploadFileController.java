@@ -25,7 +25,6 @@ import java.util.UUID;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/ali/")
 public class AliUploadFileController {
 

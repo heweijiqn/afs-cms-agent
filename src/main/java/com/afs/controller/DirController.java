@@ -13,7 +13,6 @@ import java.util.*;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/dir")
 public class DirController {
 

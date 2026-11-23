@@ -36,7 +36,7 @@ public interface AdTextMapper {
             "select count(*) from " + Table +
             "<where>" +
             "   <if test=\"name != null and name != ''\">" +
-            "     name = #{name}" +
+            "     name like concat('%', #{name}, '%')" +
             "   </if>" +
             "</where>" +
             "</script>")

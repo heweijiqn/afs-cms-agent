@@ -26,7 +26,6 @@ import java.util.*;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping
 public class HealthController {
 

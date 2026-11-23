@@ -132,6 +132,9 @@ public interface ArticleInfoMapper {
     @Update("update " + Table + " set `state` = #{state}, `site` = #{site}, `online_time` = CURRENT_TIMESTAMP where `article_id` = #{articleId}")
     int auditArticlePass(@Param("articleId") String articleId, @Param("state") String state, @Param("site") String site);
 
+    @Update("update " + Table + " set `auditor` = #{auditor}, `audit_time` = CURRENT_TIMESTAMP where `article_id` = #{articleId}")
+    int recordAudit(@Param("articleId") String articleId, @Param("auditor") String auditor);
+
     @Update("update " + Table + " set `state` = #{state}, other_info = #{otherInfo} where `article_id` = #{articleId}")
     int auditArticleReject(@Param("articleId") String articleId, @Param("state") String state, @Param("otherInfo") String otherInfo);
 

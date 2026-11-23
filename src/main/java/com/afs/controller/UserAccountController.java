@@ -25,7 +25,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms")
 public class UserAccountController {
 
@@ -45,13 +44,13 @@ public class UserAccountController {
     public ResponseUtils.Result userAccountList(@RequestHeader(Consts.HeaderUserName) String userName,
                                                 @RequestParam int pageIndex, @RequestParam int pageSize) {
         Page page = new Page();
-        page.size = Math.max(10, pageSize);
+        page.size = Math.min(100, Math.max(1, pageSize));
         page.index = pageIndex;
-        int offset = Math.max(0, (pageIndex - 1)) * pageSize;
-        List<User> userList = userMapper.getList(User.CommonUser, offset, pageSize);
+        int offset = Math.max(0, (pageIndex - 1)) * page.size;
+        List<User> userList = userMapper.getList(User.CommonUser, offset, page.size);
         page.list = userList.stream().map(e -> toUserAccountVO(e, true)).collect(Collectors.toList());
         page.totalSize = userMapper.countUserByRoot(User.CommonUser);
-        page.maxIndex = page.totalSize / pageSize;
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 

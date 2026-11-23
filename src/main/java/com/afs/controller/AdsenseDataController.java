@@ -28,7 +28,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/ad/data")
 public class AdsenseDataController {
 

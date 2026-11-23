@@ -10,6 +10,7 @@ public class ReportData {
     Long id;
     String desc;
     String channel;
+    String oldChannel;
     String value;
     String site;
     @JsonFormat(pattern="yyyy-MM-dd HH:mm:ss")

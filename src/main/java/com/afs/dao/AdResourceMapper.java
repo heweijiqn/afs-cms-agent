@@ -215,6 +215,9 @@ public interface AdResourceMapper {
     @Update("update " + Table + " set `channel_id` = #{channelId}, `land_page_url` = #{landPageUrl}, state = #{state} where `ad_resource_id` = #{adResourceId}")
     int auditPass(@Param("channelId") String channelId, @Param("landPageUrl") String landPageUrl, @Param("state") String state, @Param("adResourceId") String adResourceId);
 
+    @Update("update " + Table + " set `auditor` = #{auditor}, `audit_time` = CURRENT_TIMESTAMP where `ad_resource_id` = #{adResourceId}")
+    int recordAudit(@Param("adResourceId") String adResourceId, @Param("auditor") String auditor);
+
     @Update("update " + Table + " set `audit_msg` = #{auditMsg}, state = #{state} where `ad_resource_id` = #{adResourceId}")
     int auditReject(@Param("auditMsg") String auditMsg, @Param("state") String state, @Param("adResourceId") String adResourceId);
 

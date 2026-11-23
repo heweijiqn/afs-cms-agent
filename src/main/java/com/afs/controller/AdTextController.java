@@ -25,7 +25,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RestController
-@CrossOrigin(origins = "*")
 @RequestMapping("/cms/ad/text")
 public class AdTextController {
 
@@ -66,14 +65,14 @@ public class AdTextController {
     @PostMapping("/list")
     public ResponseUtils.Result getList(@RequestBody @Valid ListRequest request) {
         Page page = new Page();
-        page.size = Math.max(10, request.getPageSize());
+        page.size = Math.min(100, Math.max(1, request.getPageSize()));
         page.index = request.getPageIndex();
-        int offset = Math.max(0, (request.getPageIndex() - 1)) * request.getPageSize();
+        int offset = Math.max(0, (request.getPageIndex() - 1)) * page.size;
 
-        List<AdText> adTextList = adTextMapper.getList(request.getName(), offset, request.getPageSize());
+        List<AdText> adTextList = adTextMapper.getList(request.getName(), offset, page.size);
         page.list = adTextList.stream().map(e -> toAdTextVO(e)).collect(Collectors.toList());
         page.totalSize = adTextMapper.count( request.getName());
-        page.maxIndex = page.totalSize / request.getPageSize();
+        page.maxIndex = (int) Math.ceil((double) page.totalSize / page.size);
         return ResponseUtils.result(page);
     }
 
