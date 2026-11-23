@@ -155,14 +155,7 @@ class AdOverseasOpsController {
     }
 
     private static String actor(Principal principal, String headerUser) {
-        if (com.afs.controller.filter.KiwiContext.getContext() != null) return com.afs.controller.filter.KiwiContext.getUser().getName();
-        if (principal != null && principal.getName() != null && !principal.getName().isBlank()) {
-            return principal.getName();
-        }
-        if (headerUser != null && !headerUser.isBlank()) {
-            return headerUser.strip();
-        }
-        return "operator";
+        return com.afs.utils.Actors.name(principal);
     }
 
     record LocalizationGenPayload(String campaignId, String topic, String targetCountry,

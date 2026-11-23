@@ -100,7 +100,9 @@ class OverseasDataService {
     Map<String,Object> cohort(String platform,Integer days,String currency) {
         String cur=currency==null||currency.isBlank()?"USD":currency.toUpperCase(Locale.ROOT);
         double fx=rate(cur); int lookback=days==null?14:Math.max(1,Math.min(90,days));
-        var snapshots=db.queryForList("SELECT * FROM ad_cohort_observation WHERE cohort_date>=? ORDER BY campaign_id,cohort_date,age_day",LocalDate.now().minusDays(lookback).toString());
+        // Cohort rows must be visible long enough for their D30 observation to mature.
+        int horizon=Math.max(lookback,30);
+        var snapshots=db.queryForList("SELECT * FROM ad_cohort_observation WHERE cohort_date>=? ORDER BY campaign_id,cohort_date,age_day",LocalDate.now().minusDays((long)lookback+horizon).toString());
         Map<String,List<Map<String,Object>>> groups=new LinkedHashMap<>();
         for(var row:snapshots) {
             if(platform!=null&&!platform.isBlank()&&!platform.equalsIgnoreCase(String.valueOf(row.get("platform")))) continue;
@@ -134,6 +136,8 @@ class OverseasDataService {
         summary.put("ltvCacRatio",spendSums[5]>0?revenueSums[5]/spendSums[5]:null);
         summary.put("ltv30",usersSums[5]>0?revenueSums[5]*fx/usersSums[5]:null);
         summary.put("narrative",cohorts.isEmpty()?"暂无归因队列数据。请导入按获客日期归属的累计收入和留存观测。普通按日投放报表不能替代 Cohort 数据。":"仅使用已导入的归因观测；空白表示该年龄暂无观测。回本天数为首次观测到回本的天数，尚未观测到的 D30 不作预测。");
+        summary.put("windowDays",lookback);
+        summary.put("horizonDays",horizon);
         return Map.of("summary",summary,"cohorts",cohorts,"source","IMPORTED_ATTRIBUTION","rates",currencies());
     }
     private Map<String,Object> forecast(List<Map<String,Object>> observations,double spend) {

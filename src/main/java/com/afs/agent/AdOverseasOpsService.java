@@ -84,8 +84,8 @@ class AdOverseasOpsService {
             String body = v.get("body");
             String cta = v.get("cta");
 
-            // Automatic policy compliance radar check on each generated draft
-            Map<String, Object> compliance = auditComplianceInternal(headline + " " + hook + " " + body + " " + cta, plat, country);
+            // Deterministic screening keeps one generation request to one paid model call.
+            Map<String, Object> compliance = auditWithRules(headline + " " + hook + " " + body + " " + cta, plat);
             String compStatus = String.valueOf(compliance.getOrDefault("riskLevel", "COMPLIANT"));
             int compScore = ((Number) compliance.getOrDefault("riskScore", 95)).intValue();
             String riskTagsJson = jsonString(compliance.get("flaggedTokens"));
@@ -290,7 +290,10 @@ class AdOverseasOpsService {
         // Pattern 1: Absolute guarantees & deceptive claims
         if (lower.contains("100% guaranteed") || lower.contains("100% cure") || lower.contains("get rich quick")
                 || lower.contains("guaranteed profit") || lower.contains("100% free forever") || lower.contains("包赚")
-                || lower.contains("绝不亏损") || lower.contains("绝对第一")) {
+                || lower.contains("绝不亏损") || lower.contains("绝对第一")
+                || lower.contains("garantiert") || lower.contains("100% heilung") || lower.contains("garantierte heilung")
+                || lower.contains("guaranti") || lower.contains("guérison garantie") || lower.contains("garantizado")
+                || lower.contains("cura garantizada")) {
             flagged.add("100% Guaranteed/Absolute Promise");
             rules.add("FTC_DECEPTIVE_GUARANTEE");
             score -= 35;
@@ -370,7 +373,11 @@ class AdOverseasOpsService {
     }
 
     Map<String, Object> updateLocalizationDraftStatus(long id, String status, String actor) {
-        String safe = List.of("DRAFT", "PUBLISHED", "AB_TESTING", "ARCHIVED").contains(status) ? status : "PUBLISHED";
+        String safe = status == null ? "" : status.strip().toUpperCase(Locale.ROOT);
+        if (!List.of("DRAFT", "PUBLISHED", "AB_TESTING", "ARCHIVED").contains(safe)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "不支持的本地化草稿状态：" + status + "，可选 DRAFT/PUBLISHED/AB_TESTING/ARCHIVED");
+        }
         int updated = db.update("UPDATE ad_localization_draft SET status = ? WHERE id = ?", safe, id);
         if (updated == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "目标本地化草稿不存在");
@@ -492,6 +499,19 @@ class AdOverseasOpsService {
         boolean safeDryRun = dryRun == null || dryRun;
         boolean safeEnabled = enabled == null || enabled;
 
+        if ("REDUCE_BUDGET".equals(safeAction)) {
+            try {
+                var original = parseObject(safeParams);
+                var inverted = json.createObjectNode();
+                inverted.setAll((com.fasterxml.jackson.databind.node.ObjectNode) original);
+                double percent = Math.abs(original.path("percent").asDouble(original.path("budgetDeltaPct").asDouble(8)));
+                inverted.put("budgetDeltaPct", -Math.min(50, percent));
+                safeParams = inverted.toString();
+            } catch (Exception ex) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "降价参数格式无效");
+            }
+            safeAction = "ADJUST_BUDGET";
+        }
         if(!List.of("STOP_LOSS","SCALE_UP","FATIGUE_ROTATE","OFF_PEAK_SAVER").contains(safeType)
             || !List.of("PAUSE_CAMPAIGN","ADJUST_BUDGET","SWAP_CREATIVE").contains(safeAction))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"不支持的规则或动作");
@@ -506,7 +526,7 @@ class AdOverseasOpsService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"规则阈值须为非负数字");
         }
         double delta=parameters.path("budgetDeltaPct").asDouble(15),discount=parameters.path("bidDiscountPct").asDouble(30);
-        if(!Double.isFinite(delta)||delta < 0||delta > 50||!Double.isFinite(discount)||discount<0||discount>50||parameters.path("maxDailyBudget").asDouble(600)<=0)
+        if(!Double.isFinite(delta)||delta < -50||delta > 50||!Double.isFinite(discount)||discount<0||discount>50||parameters.path("maxDailyBudget").asDouble(600)<=0)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"预算调整幅度须在 ±50% 以内，预算上限须大于 0");
         if (id != null && id > 0) {
             db.update("""
