@@ -47,6 +47,7 @@ class AdAgentExtensionsService {
     private final AdOpsInsightsService opsInsights;
     private final AiModelGateway gateway;
     private final AgentTelemetryService telemetry;
+    private final OptimizationWorkflow workflow;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
@@ -55,7 +56,8 @@ class AdAgentExtensionsService {
                              CmsCampaignDataService cmsData,
                              AdOpsInsightsService opsInsights,
                              AiModelGateway gateway,
-                             AgentTelemetryService telemetry, OverseasEvidenceService evidence) {
+                             AgentTelemetryService telemetry, OverseasEvidenceService evidence,
+                             OptimizationWorkflow workflow) {
         this.evidence = evidence;
         this.db = db;
         this.json = json;
@@ -63,6 +65,7 @@ class AdAgentExtensionsService {
         this.opsInsights = opsInsights;
         this.gateway = gateway;
         this.telemetry = telemetry;
+        this.workflow = workflow;
     }
 
     // =========================================================================
@@ -611,8 +614,11 @@ class AdAgentExtensionsService {
     }
 
     Map<String, Object> updateCreativeDraftStatus(long id, String status, String actor) {
-        String safe = List.of("DRAFT", "PUBLISHED", "AB_TESTING", "AB_ADOPTED", "AB_STOPPED", "ARCHIVED").contains(status)
-                ? status : "PUBLISHED";
+        String safe = status == null ? "" : status.strip().toUpperCase(Locale.ROOT);
+        if (!List.of("DRAFT", "PUBLISHED", "AB_TESTING", "AB_ADOPTED", "AB_STOPPED", "ARCHIVED").contains(safe)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "不支持的草稿状态：" + status + "，可选 DRAFT/PUBLISHED/AB_TESTING/AB_ADOPTED/AB_STOPPED/ARCHIVED");
+        }
         int updated = db.update("UPDATE ad_creative_draft SET status = ? WHERE id = ?", safe, id);
         if (updated == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "创意草稿不存在");
@@ -723,30 +729,42 @@ class AdAgentExtensionsService {
                 : BigDecimal.valueOf(100);
         BigDecimal proposedBudget = currentBudget.multiply(BigDecimal.valueOf(1.0 + safePct / 100.0))
                 .max(BigDecimal.ONE).setScale(2, RoundingMode.HALF_UP);
-        String channel = matched != null && matched.platform() != null ? matched.platform() : "Google";
-        String currency = matched != null && matched.currency() != null ? matched.currency() : "USD";
+        String resolvedId = matched != null && matched.campaignId() != null ? matched.campaignId() : campaignId;
         String cname = matched != null && matched.name() != null ? matched.name() : campaignId;
-
-        Map<String, Object> plan = new LinkedHashMap<>();
-        plan.put("campaignId", campaignId);
-        plan.put("campaignName", cname);
-        plan.put("channel", channel);
-        plan.put("currency", currency);
-        plan.put("currentDailyBudget", currentBudget);
-        plan.put("proposedDailyBudget", proposedBudget);
-        plan.put("action", safeAction);
-        plan.put("changePercent", safePct);
-        plan.put("targetRoas", targetRoas > 0 ? targetRoas : 1.25);
-        plan.put("source", "FIVE_AGENT_CLOSED_LOOP");
-        plan.put("rationale", rationale == null || rationale.isBlank()
+        String reason = rationale == null || rationale.isBlank()
                 ? "由五智能体闭环（Monitor/Audience/Creative/Bidding/Optimize）综合核算并一键转入审批"
-                : rationale);
-        plan.put("confidence", 0.86);
+                : rationale;
+        int pct = safePct;
+        OptimizationWorkflow.Action proposalAction = switch (safeAction) {
+            case "INCREASE_BUDGET" -> OptimizationWorkflow.Action.INCREASE;
+            case "DECREASE_BUDGET", "PAUSE_CAMPAIGN" -> OptimizationWorkflow.Action.REDUCE;
+            default -> OptimizationWorkflow.Action.HOLD;
+        };
+        if (proposalAction == OptimizationWorkflow.Action.INCREASE && pct < 0) pct = -pct;
+        if (proposalAction == OptimizationWorkflow.Action.REDUCE && pct > 0) pct = -pct;
+        if (proposalAction == OptimizationWorkflow.Action.HOLD) pct = 0;
+        final int proposalPercent = pct;
 
         try {
+            BigDecimal roasTarget = BigDecimal.valueOf(targetRoas > 0 ? targetRoas : 1.25);
+            var pkg = cmsData.buildPackageForCampaign(resolvedId, roasTarget, null, null,
+                    Math.max(1, Math.min(20, Math.abs(proposalPercent) == 0 ? 10 : Math.abs(proposalPercent))));
+            OptimizationWorkflow.Plan base = workflow.rulesOnly(pkg.input(), pkg.evidence());
+            var proposal = new OptimizationWorkflow.Proposal(proposalAction, proposalPercent, reason);
+            var explanation = new OptimizationWorkflow.Explanation(
+                    "FIVE_AGENT_CLOSED_LOOP", reason, "five-agent-closed-loop", 0,
+                    null, null, null, List.of(), 0, List.of(),
+                    0.86, "MEDIUM", 0, 0, 0,
+                    List.of("five_agent_bridge"), List.of(), List.of(), "FIVE_AGENT", OptimizationWorkflow.ENGINE);
+            var scorecard = SignalScorecard.evaluate(base.input(), base.metrics(), base.context(),
+                    pkg.evidence(), proposal);
+            OptimizationWorkflow.Plan plan = new OptimizationWorkflow.Plan(base.input(), base.metrics(),
+                    proposal, base.context(), explanation, base.findings(), base.evidence(),
+                    base.policyVersion(), scorecard);
+
             String planJson = json.writeValueAsString(plan);
             String runId = UUID.randomUUID().toString();
-            String proposalHash = sha256(campaignId + "|" + safeAction + "|" + proposedBudget + "|1");
+            String proposalHash = SignalScorecard.proposalFingerprint(plan.input(), plan.proposal());
             db.update("""
                     INSERT INTO optimization_run(id, plan, state, proposal_revision, proposal_hash, created_by)
                     VALUES (?, ?, 'PENDING', 1, ?, ?)
@@ -755,12 +773,14 @@ class AdAgentExtensionsService {
 
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("id", runId);
-            out.put("campaignId", campaignId);
+            out.put("campaignId", resolvedId);
             out.put("state", "PENDING");
             out.put("proposalHash", proposalHash);
             out.put("currentDailyBudget", currentBudget);
             out.put("proposedDailyBudget", proposedBudget);
             return out;
+        } catch (ResponseStatusException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "生成审批提案失败：" + ex.getMessage());
         }

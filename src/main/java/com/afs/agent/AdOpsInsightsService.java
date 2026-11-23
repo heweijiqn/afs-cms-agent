@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -25,10 +29,30 @@ class AdOpsInsightsService {
 
     private final JdbcTemplate db;
     private final CmsCampaignDataService cmsData;
+    private final ObjectMapper json;
+    private final ConcurrentHashMap<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
-    AdOpsInsightsService(JdbcTemplate db, CmsCampaignDataService cmsData) {
+    AdOpsInsightsService(JdbcTemplate db, CmsCampaignDataService cmsData, ObjectMapper json) {
         this.db = db;
         this.cmsData = cmsData;
+        this.json = json;
+    }
+
+    private record CacheEntry(long expiresAt, Map<String, Object> value) {}
+
+    private Map<String, Object> cached(String key, long ttlMs, Supplier<Map<String, Object>> supplier) {
+        long now = System.currentTimeMillis();
+        CacheEntry entry = cache.get(key);
+        if (entry != null && entry.expiresAt > now) {
+            return json.convertValue(entry.value, new TypeReference<Map<String, Object>>() {});
+        }
+        Map<String, Object> value = supplier.get();
+        cache.put(key, new CacheEntry(now + ttlMs, value));
+        return json.convertValue(value, new TypeReference<Map<String, Object>>() {});
+    }
+
+    void clearCache() {
+        cache.clear();
     }
 
     // =========================================================================
@@ -36,6 +60,11 @@ class AdOpsInsightsService {
     // =========================================================================
 
     Map<String, Object> buildFunnelAndMatrix(String platform) {
+        String key = "funnel|" + (platform == null || platform.isBlank() ? "ALL" : platform.toUpperCase(Locale.ROOT));
+        return cached(key, 30_000L, () -> computeFunnelAndMatrix(platform));
+    }
+
+    private Map<String, Object> computeFunnelAndMatrix(String platform) {
         List<CmsCampaignDataService.CampaignSummary> campaigns = cmsData.listCampaigns("", platform, 200);
         long totalImpressions = 0L;
         long totalClicks = 0L;
@@ -163,6 +192,11 @@ class AdOpsInsightsService {
     // =========================================================================
 
     Map<String, Object> buildBudgetPacing(String platform) {
+        String key = "pacing|" + (platform == null || platform.isBlank() ? "ALL" : platform.toUpperCase(Locale.ROOT));
+        return cached(key, 30_000L, () -> computeBudgetPacing(platform));
+    }
+
+    private Map<String, Object> computeBudgetPacing(String platform) {
         List<CmsCampaignDataService.CampaignSummary> campaigns = cmsData.listCampaigns("", platform, 200);
         int currentHour = LocalTime.now().getHour();
         double dayProgress = Math.max(0.18, Math.min(0.95, (currentHour + 0.5) / 24.0));
@@ -258,11 +292,15 @@ class AdOpsInsightsService {
         summary.put("overspendCount", overspendCount);
         summary.put("underspendCount", underspendCount);
         summary.put("healthyCount", healthyCount);
-        summary.put("firewallHealth", lossBreakerCount > 0 ? "ALERT" : (overspendCount > 0 ? "WATCH" : "SAFE"));
+        summary.put("observedCampaigns", items.size());
+        summary.put("dataAvailable", !items.isEmpty());
+        summary.put("firewallHealth", items.isEmpty() ? "NO_DATA"
+                : (lossBreakerCount > 0 ? "ALERT" : (overspendCount > 0 ? "WATCH" : "SAFE")));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("summary", summary);
         result.put("items", items.stream().limit(15).toList());
+        result.put("dataAvailable", !items.isEmpty());
         return result;
     }
 
@@ -322,10 +360,10 @@ class AdOpsInsightsService {
                                       String webhookUrl, boolean enabled, String actor) {
         ensureDefaultAlertRules();
         String safeName = name == null || name.isBlank() ? "自定义投放告警" : name.strip();
-        String safeMetric = normalizeEnum(metric, List.of("ROAS", "LOSS", "PACING", "SPEND"), "ROAS");
-        String safeOp = normalizeEnum(operator, List.of("LT", "LTE", "GT", "GTE"), "LT");
-        String safeSev = normalizeEnum(severity, List.of("CRITICAL", "WARN", "INFO"), "WARN");
-        String safeChan = normalizeEnum(channel, List.of("FEISHU", "DINGTALK", "WECOM", "WEBHOOK", "INBOX"), "FEISHU");
+        String safeMetric = requireEnum(metric, List.of("ROAS", "LOSS", "PACING", "SPEND"), "metric");
+        String safeOp = requireEnum(operator, List.of("LT", "LTE", "GT", "GTE"), "operator");
+        String safeSev = requireEnum(severity, List.of("CRITICAL", "WARN", "INFO"), "severity");
+        String safeChan = requireEnum(channel, List.of("FEISHU", "DINGTALK", "WECOM", "WEBHOOK", "INBOX"), "channel");
         BigDecimal safeThreshold = threshold == null ? BigDecimal.ONE : threshold;
         String safeWebhook = webhookUrl == null ? "" : webhookUrl.strip();
 
@@ -413,10 +451,15 @@ class AdOpsInsightsService {
 
         List<Map<String, Object>> events = listAlertEvents("ALL");
         long openCount = events.stream().filter(e -> "OPEN".equals(e.get("status"))).count();
+        boolean dataAvailable = pacingData.get("dataAvailable") == null || Boolean.TRUE.equals(pacingData.get("dataAvailable"));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("scannedRules", rules.size());
         result.put("newlyTriggered", triggered);
         result.put("openCount", openCount);
+        result.put("dataAvailable", dataAvailable);
+        if (!dataAvailable) {
+            result.put("message", "今日尚无平台观测数据，已跳过告警评估（不做 SAFE 结论）");
+        }
         result.put("scannedAt", OffsetDateTime.now().toString());
         result.put("events", events);
         return result;
@@ -607,13 +650,13 @@ class AdOpsInsightsService {
                                         ad_platform, land_page_url, ad_desc, audit_msg, partner, media_list, state,
                                         status, country, keyword, ad_account, ad_spend, gross_revenue, profit, roi,
                                         rule_id, ad_platform_info, ad_platform_state, ad_platform_msg)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AUDITING', 1, ?, ?, ?, 0, 0, 0, 0, ?, '', 'LOCAL_ONLY', ?)
+                VALUES (?, ?, ?, ?, '', ?, ?, ?, '', ?, ?, ?, ?, 'AUDITING', 1, ?, ?, ?, 0, 0, 0, 0, NULL, '', 'LOCAL_ONLY', ?)
                 """,
-                src.get("ACCOUNT_ID"), newResId, newCampaign, src.get("ARTICLE_ID"), src.get("CHANNEL_ID"),
-                newCampaign, src.get("AM"), src.get("AD_PLATFORM"), src.get("LAND_PAGE_URL"),
-                src.get("AD_DESC"), "由 " + actor + " 从 " + adResourceId + " 一键复制", src.get("PARTNER"),
+                src.get("ACCOUNT_ID"), newResId, newCampaign, src.get("ARTICLE_ID"),
+                newCampaign, src.get("AM"), src.get("AD_PLATFORM"),
+                src.get("AD_DESC"), "由 " + actor + " 从 " + adResourceId + " 一键复制，需重新绑定独立 channel", src.get("PARTNER"),
                 src.get("MEDIA_LIST"), src.get("COUNTRY"), src.get("KEYWORD"), src.get("AD_ACCOUNT"),
-                src.get("RULE_ID"), "已复制待同步");
+                "已复制待绑定新渠道");
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("cloned", true);
@@ -662,6 +705,18 @@ class AdOpsInsightsService {
         if (val == null || val.isBlank()) return fallback;
         String upper = val.strip().toUpperCase(Locale.ROOT);
         return allowed.contains(upper) ? upper : fallback;
+    }
+
+    private static String requireEnum(String val, List<String> allowed, String field) {
+        if (val == null || val.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "缺少 " + field);
+        }
+        String upper = val.strip().toUpperCase(Locale.ROOT);
+        if (!allowed.contains(upper)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "不支持的 " + field + "：" + val + "，可选值 " + allowed);
+        }
+        return upper;
     }
 
     private static double estimateCpc(String platform) {

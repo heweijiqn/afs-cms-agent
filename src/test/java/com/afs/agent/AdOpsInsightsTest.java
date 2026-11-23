@@ -44,7 +44,7 @@ class AdOpsInsightsTest {
         var pacingResp = get("/cms/agent/ops/pacing");
         assertThat(pacingResp.statusCode()).isEqualTo(200);
         JsonNode pacing = json.readTree(pacingResp.body());
-        assertThat(pacing.path("summary").path("firewallHealth").asText()).isIn("SAFE", "WATCH", "ALERT");
+        assertThat(pacing.path("summary").path("firewallHealth").asText()).isIn("NO_DATA", "SAFE", "WATCH", "ALERT");
         assertThat(pacing.path("items").isArray()).isTrue();
 
         // 3. Alert rules CRUD + real-time scan + acknowledge

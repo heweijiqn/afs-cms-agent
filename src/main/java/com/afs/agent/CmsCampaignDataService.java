@@ -93,6 +93,7 @@ class CmsCampaignDataService {
         }
         sql.append(" ORDER BY a.ad_spend DESC, a.id DESC LIMIT ?");
         params.add(safeLimit);
+        String dataDate = latestDataDate();
         return db.query(sql.toString(), (row, index) -> {
             BigDecimal spend = bd(row.getDouble("ad_spend"));
             BigDecimal revenue = bd(row.getDouble("gross_revenue"));
@@ -116,8 +117,26 @@ class CmsCampaignDataService {
                     row.getObject("rule_id") != null && row.getString("rule_name") != null
                             && !row.getString("rule_name").isBlank(),
                     row.getString("rule_name"),
-                    (int) Math.min(20, Math.floor(Math.abs(row.getDouble("budget_change")))));
+                    (int) Math.min(20, Math.floor(Math.abs(row.getDouble("budget_change")))),
+                    dataDate);
         }, params.toArray());
+    }
+
+    private volatile String cachedDataDate = "";
+    private volatile long cachedDataDateAt = 0L;
+
+    /** Latest platform report date across the workspace, used only as a UI window label. */
+    private String latestDataDate() {
+        long now = System.currentTimeMillis();
+        if (now - cachedDataDateAt < 60_000L) return cachedDataDate;
+        try {
+            String value = db.queryForObject("SELECT MAX(`date`) FROM adsense_data", String.class);
+            cachedDataDate = value == null ? "" : value;
+        } catch (Exception ignored) {
+            cachedDataDate = "";
+        }
+        cachedDataDateAt = now;
+        return cachedDataDate;
     }
 
     /** Lists active campaigns that have spend above threshold yet are not bound to any active automation rule. */
@@ -154,10 +173,14 @@ class CmsCampaignDataService {
                                 ?) AS site_code,
                        COALESCE((SELECT MAX(t.budget) FROM tiktok_ad_group_info t WHERE t.ad_resource_id = a.ad_resource_id), 0) AS obs_budget
                 FROM ad_resource a
-                WHERE a.status = 1 AND (a.ad_resource_id = ? OR (? <> '' AND a.channel_id = ?))
+                WHERE a.status = 1
+                  AND ((? <> '' AND a.ad_resource_id = ?)
+                       OR (? = '' AND ? <> '' AND a.channel_id = ?))
                 LIMIT 1
-                """, site == null ? "local" : site, campaignId == null ? "" : campaignId,
-                channel == null ? "" : channel, channel == null ? "" : channel);
+                """, site == null ? "local" : site,
+                campaignId == null ? "" : campaignId, campaignId == null ? "" : campaignId,
+                campaignId == null ? "" : campaignId, channel == null ? "" : channel,
+                channel == null ? "" : channel);
         String resolvedId = campaignId;
         String resolvedChannel = channel == null ? "" : channel;
         String resolvedSite = site == null ? "local" : site;
@@ -169,6 +192,9 @@ class CmsCampaignDataService {
             resolvedSite = firstNonBlank(str(meta.get("site_code"), ""), resolvedSite);
             double obs = num(meta.get("obs_budget"));
             if (obs > 0) observedBudget = bd(obs);
+        } else if (campaignId != null && !campaignId.isBlank()) {
+            // A campaign-specific request must not borrow another campaign's rows through a shared channel.
+            return null;
         }
         List<CmsReportSource.Day> daily = loadDailyRows(resolvedId, resolvedChannel, start, end);
         if (daily.isEmpty()) {
@@ -842,7 +868,7 @@ class CmsCampaignDataService {
         BigDecimal roas = in.spend().signum() > 0 ? in.revenue().divide(in.spend(), 4, RoundingMode.HALF_UP) : null;
         return new CampaignSummary(c.campaignId(), c.id() + " · " + c.campaignId(), c.site(), c.channel(),
                 "Simulation", "GLOBAL", "PASS", c.currency(), in.spend(), in.revenue(), profit, roas,
-                c.currentBudget(), true, "Simulation Rule (±10%)", 10);
+                c.currentBudget(), true, "Simulation Rule (±10%)", 10, "");
     }
 
     private static boolean matches(CampaignSummary item, String query, String platform) {
@@ -936,7 +962,7 @@ class CmsCampaignDataService {
     record CampaignSummary(String campaignId, String name, String site, String channel, String platform,
                            String country, String state, String currency, BigDecimal spend, BigDecimal revenue,
                            BigDecimal profit, BigDecimal roas, BigDecimal observedBudget,
-                           boolean ruleBound, String ruleName, int ruleBudgetCap) {}
+                           boolean ruleBound, String ruleName, int ruleBudgetCap, String dataDate) {}
 
     record AnomalyItem(String category, String severity, String campaignId, String name, String site,
                        String channel, String platform, BigDecimal spend, BigDecimal revenue,

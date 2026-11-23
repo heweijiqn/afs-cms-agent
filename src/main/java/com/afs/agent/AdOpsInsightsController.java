@@ -102,13 +102,7 @@ class AdOpsInsightsController {
     }
 
     private static String actor(Principal principal, String headerUser) {
-        if (principal != null && principal.getName() != null && !principal.getName().isBlank()) {
-            return principal.getName();
-        }
-        if (headerUser != null && !headerUser.isBlank()) {
-            return headerUser.strip();
-        }
-        return "operator";
+        return com.afs.utils.Actors.name(principal);
     }
 
     record AlertRulePayload(Long id, String name, String metric, String operator,

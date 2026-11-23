@@ -72,7 +72,7 @@ class OverseasOperationsTest {
     }
     @Test void configuredThresholdIsUsedAndMissingAssetsAreNotSuccess(){
         when(cms.hasPlatformObservation(any(),any())).thenReturn(true);
-        when(cms.listCampaigns("","",250)).thenReturn(List.of(new CmsCampaignDataService.CampaignSummary("c","test","local","ch","Facebook","US","PASS","USD",BigDecimal.valueOf(90),BigDecimal.ZERO,BigDecimal.valueOf(-90),BigDecimal.ZERO,null,false,"",0)));
+        when(cms.listCampaigns("","",250)).thenReturn(List.of(new CmsCampaignDataService.CampaignSummary("c","test","local","ch","Facebook","US","PASS","USD",BigDecimal.valueOf(90),BigDecimal.ZERO,BigDecimal.valueOf(-90),BigDecimal.ZERO,null,false,"",0,"")));
         when(cms.loadCampaignEvidence(eq("c"),anyString(),anyString(),any(),any())).thenReturn(new CmsReportSource.Campaign("c","c","local","ch","USD",null,List.of(new CmsReportSource.Day(LocalDate.now(),BigDecimal.valueOf(90),BigDecimal.ZERO,1000,20,0)),List.of(),List.of()));
         when(cms.isLocalWorkspace()).thenReturn(true);
         service.saveAutomationRule(null,"threshold","STOP_LOSS","ALL","{\"minSpend\":100,\"timezone\":\"UTC\"}","PAUSE_CAMPAIGN","{}",false,true,"test");
@@ -119,7 +119,7 @@ class OverseasOperationsTest {
         db.execute("CREATE TABLE IF NOT EXISTS tiktok_ad_group_info(ad_resource_id VARCHAR, budget DOUBLE,status INT,ad_group_status VARCHAR)");
         db.update("DELETE FROM tiktok_ad_group_info");db.update("INSERT INTO tiktok_ad_group_info VALUES('c',100,1,'ENABLE')");
         when(cms.isLocalWorkspace()).thenReturn(true);when(cms.hasPlatformObservation(any(),any())).thenReturn(true);
-        when(cms.listCampaigns("","",250)).thenReturn(List.of(new CmsCampaignDataService.CampaignSummary("c","test","local","ch","TikTok","US","PASS","USD",BigDecimal.valueOf(90),BigDecimal.valueOf(180),BigDecimal.valueOf(90),BigDecimal.valueOf(2),BigDecimal.valueOf(100),false,"",0)));
+        when(cms.listCampaigns("","",250)).thenReturn(List.of(new CmsCampaignDataService.CampaignSummary("c","test","local","ch","TikTok","US","PASS","USD",BigDecimal.valueOf(90),BigDecimal.valueOf(180),BigDecimal.valueOf(90),BigDecimal.valueOf(2),BigDecimal.valueOf(100),false,"",0,"")));
         when(cms.loadCampaignEvidence(eq("c"),anyString(),anyString(),any(),any())).thenReturn(new CmsReportSource.Campaign("c","c","local","ch","USD",BigDecimal.valueOf(100),List.of(new CmsReportSource.Day(LocalDate.now(),BigDecimal.valueOf(90),BigDecimal.valueOf(180),1000,20,10)),List.of(),List.of()));
         service.saveAutomationRule(null,"scale","SCALE_UP","ALL","{\"minRoas\":1.3,\"minPacingPct\":85}","ADJUST_BUDGET","{\"budgetDeltaPct\":15,\"maxDailyBudget\":110}",false,true,"test");
         assertThat(service.evaluateAutomationRules("test").get("executedCount")).isEqualTo(1);

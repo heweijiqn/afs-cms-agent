@@ -292,7 +292,7 @@ class AgentCopilotController {
     }
 
     private static String actor(Principal principal) {
-        return principal == null ? "local-operator" : principal.getName();
+        return com.afs.utils.Actors.name(principal);
     }
 
     record CreateSessionRequest(@Size(max = 180) String title,

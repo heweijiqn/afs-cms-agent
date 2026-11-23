@@ -1,5 +1,7 @@
 package com.afs.agent;
 
+import com.afs.controller.filter.RootAuth;
+import com.afs.utils.Actors;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -116,7 +118,7 @@ class OptimizationController {
 
     /** Autonomous portfolio anomaly scan across all active campaigns. */
     @PostMapping(path = "/scan", consumes = "application/json")
-    Map<String, Object> scan(@RequestBody(required = false) ScanRequest request) {
+    Map<String, Object> scan(@Valid @RequestBody(required = false) ScanRequest request) {
         BigDecimal targetRoas = request != null && request.targetRoas() != null
                 ? request.targetRoas() : new BigDecimal("1.25");
         BigDecimal minSpend = request != null && request.minimumSpend() != null
@@ -142,6 +144,7 @@ class OptimizationController {
         return safetyPolicy.summary();
     }
 
+    @RootAuth
     @PostMapping(path = "/safety", consumes = "application/json")
     Map<String, Object> updateSafetyPolicy(@RequestBody SafetyUpdateRequest request, Principal principal) {
         safetyPolicy.update(
@@ -153,6 +156,7 @@ class OptimizationController {
         return safetyPolicy.summary();
     }
 
+    @RootAuth
     @PostMapping(path = "/safety/kill-switch", consumes = "application/json")
     Map<String, Object> toggleKillSwitch(@RequestBody KillSwitchRequest request, Principal principal) {
         safetyPolicy.setKillSwitch(Boolean.TRUE.equals(request.active()), request.reason(), actor(principal));
@@ -161,7 +165,7 @@ class OptimizationController {
 
     /** Offline counterfactual replay & paired uplift evaluation over real historical campaign data. */
     @PostMapping(path = "/replay", consumes = "application/json")
-    Map<String, Object> runOfflineReplay(@RequestBody(required = false) ReplayRequest request) {
+    Map<String, Object> runOfflineReplay(@Valid @RequestBody(required = false) ReplayRequest request) {
         BigDecimal targetRoas = request != null && request.targetRoas() != null
                 ? request.targetRoas() : new BigDecimal("1.25");
         BigDecimal minSpend = request != null && request.minimumSpend() != null
@@ -174,7 +178,7 @@ class OptimizationController {
 
     /** 5-Agent closed-loop orchestration: Monitor -> Audience -> Creative -> Bidding -> Optimize. */
     @PostMapping(path = "/five-agent/run", consumes = "application/json")
-    Map<String, Object> runFiveAgentLoop(@RequestBody(required = false) FiveAgentRequest request) {
+    Map<String, Object> runFiveAgentLoop(@Valid @RequestBody(required = false) FiveAgentRequest request) {
         String cid = request == null ? null : request.campaignId();
         BigDecimal targetRoas = request != null && request.targetRoas() != null
                 ? request.targetRoas() : new BigDecimal("1.25");
@@ -187,7 +191,7 @@ class OptimizationController {
 
     /** Standalone convex budget reallocation solver across active campaigns. */
     @PostMapping(path = "/five-agent/allocate", consumes = "application/json")
-    Map<String, Object> solveConvexAllocation(@RequestBody(required = false) AllocationRequest request) {
+    Map<String, Object> solveConvexAllocation(@Valid @RequestBody(required = false) AllocationRequest request) {
         BigDecimal total = request == null ? null : request.totalBudget();
         int maxChange = request != null && request.maxChangePercent() != null ? request.maxChangePercent() : 15;
         int limit = request != null && request.limit() != null ? request.limit() : 10;
@@ -424,8 +428,9 @@ class OptimizationController {
     }
 
     @GetMapping("/runs")
-    List<Run> recent() {
-        return jdbc.query(SELECT + " ORDER BY created_at DESC, id DESC LIMIT 30", this::map);
+    List<Run> recent(@RequestParam(defaultValue = "50") int limit) {
+        int safe = Math.max(1, Math.min(200, limit));
+        return jdbc.query(SELECT + " ORDER BY created_at DESC, id DESC LIMIT ?", this::map, safe);
     }
 
     @GetMapping("/runs/{id}")
@@ -728,7 +733,7 @@ class OptimizationController {
     }
 
     private String actor(Principal principal) {
-        return principal == null ? "admin" : principal.getName();
+        return Actors.name(principal);
     }
 
     private Run map(java.sql.ResultSet row, int index) throws java.sql.SQLException {
