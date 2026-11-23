@@ -138,7 +138,7 @@ export function resetAgent() {
 }
 
 export async function refreshRuns() {
-  runs = await requestList(runsBase);
+  runs = await requestList(`${runsBase}?limit=100`);
   return runs;
 }
 
@@ -146,7 +146,7 @@ const runTitle = run => run.plan?.input?.campaignId || "未命名分析";
 const isAiRun = run => String(run.plan?.explanation?.source || "").startsWith("LANGCHAIN4J_");
 const formatActor = raw => {
   const v = String(raw || "").trim();
-  if (!v || v === "local-operator" || v === "local-admin") return "admin";
+  if (!v || v === "local-operator" || v === "system") return "系统";
   if (v === "langgraph-agent") return "智能引擎";
   return v;
 };
@@ -1437,7 +1437,7 @@ export async function agent(target, context, isCurrent, openLogin) {
       </div>
       <div id="scan-ai-box"></div>`;
 
-      output.innerHTML = toolbar + cards + table(["等级", "分类", "活动", "平台", "花费", "收入", "ROAS", "诊断摘要", "操作"],
+      output.innerHTML = toolbar + cards + table(["等级", "分类", "活动", "平台", "最新日报花费", "收入", "ROAS", "诊断摘要", "操作"],
         rows, "当前阈值下未发现异常或放量项，可调整目标 ROAS 或最低花费重试。");
 
       const aiScanBtn = $("#btn-ai-scan-interpret", output);
@@ -1458,7 +1458,7 @@ export async function agent(target, context, isCurrent, openLogin) {
       const exportBtn = $("#btn-export-scan", output);
       if (exportBtn) {
         exportBtn.onclick = () => {
-          const headers = ["等级", "分类", "活动ID", "活动名称", "平台", "花费(USD)", "收入(USD)", "ROAS", "诊断摘要"];
+          const headers = ["等级", "分类", "活动ID", "活动名称", "平台", "最新日报花费(USD)", "收入(USD)", "ROAS", "诊断摘要"];
           const csvRows = items.map(item => [
             item.severity, categoryLabels[item.category] || item.category,
             item.campaignId, item.name || "", item.platform || "",
@@ -1703,7 +1703,7 @@ export async function agent(target, context, isCurrent, openLogin) {
       <label class="all">搜索活动<input type="search" id="campaign-picker-search" placeholder="输入活动 ID、名称、平台或站点过滤…"></label>
       <label class="all">选择在投活动（自动拉取逐日报表、国家拆分、创意与规则）
         <select name="campaignId" id="campaign-picker-select" required size="6">
-          ${campaigns.map(c => `<option value="${e(c.campaignId)}">${e(c.campaignId)} · ${e(c.platform || "")} · 花费 ${e(money(c.spend, c.currency))} · ROAS ${e(multiple(c.roas))} · ${c.ruleBound ? "已绑规则" : "未绑规则"} · ${e(c.name)}</option>`).join("")}
+          ${campaigns.map(c => `<option value="${e(c.campaignId)}">${e(c.campaignId)} · ${e(c.platform || "")} · 最新日报花费 ${e(money(c.spend, c.currency))}${c.dataDate ? "（" + e(c.dataDate) + "）" : ""} · ROAS ${e(multiple(c.roas))} · ${c.ruleBound ? "已绑规则" : "未绑规则"} · ${e(c.name)}</option>`).join("")}
         </select>
       </label>
       <label>分析深度
@@ -1754,7 +1754,7 @@ export async function agent(target, context, isCurrent, openLogin) {
         const filtered = campaigns.filter(c =>
           !q || `${c.campaignId} ${c.name} ${c.platform} ${c.site} ${c.channel}`.toLowerCase().includes(q));
         selectEl.innerHTML = filtered.map(c =>
-          `<option value="${e(c.campaignId)}">${e(c.campaignId)} · ${e(c.platform || "")} · 花费 ${e(money(c.spend, c.currency))} · ROAS ${e(multiple(c.roas))} · ${c.ruleBound ? "已绑规则" : "未绑规则"} · ${e(c.name)}</option>`
+          `<option value="${e(c.campaignId)}">${e(c.campaignId)} · ${e(c.platform || "")} · 最新日报花费 ${e(money(c.spend, c.currency))}${c.dataDate ? "（" + e(c.dataDate) + "）" : ""} · ROAS ${e(multiple(c.roas))} · ${c.ruleBound ? "已绑规则" : "未绑规则"} · ${e(c.name)}</option>`
         ).join("");
         if (selectEl.options.length) selectEl.selectedIndex = 0;
       };

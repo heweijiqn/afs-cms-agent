@@ -10,8 +10,8 @@ interface LoginViewProps {
 const CMS_QUICK_ACCOUNTS: Array<{ name: string; role: string }> = [
   { name: "admin", role: "超级管理员 · 投放总控" },
   { name: "alex.chen", role: "TikTok 买量负责人" },
-  { name: "sarah.lin", role: "Google 投放专家" },
-  { name: "david.wu", role: "Meta 增长负责人" }
+  { name: "sarah.lin", role: "Meta 信息流增长经理" },
+  { name: "david.wu", role: "Google 搜索投放经理" }
 ];
 
 const SIM_QUICK_ACCOUNTS: Array<{ name: string; role: string }> = [

@@ -34,7 +34,8 @@ const FIREWALL_TONE: Record<string, string> = {
   LOSS_BREAKER: "red",
   OVERSPEND_ALERT: "amber",
   UNDERSPEND: "gray",
-  HEALTHY: "teal"
+  HEALTHY: "teal",
+  NO_DATA: "gray"
 };
 
 const DAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];

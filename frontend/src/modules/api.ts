@@ -86,22 +86,24 @@ export function requestNonce() {
   return [value.slice(0, 8), value.slice(8, 12), value.slice(12, 16), value.slice(16, 20), value.slice(20)].join("-");
 }
 
-function authorization(path, method, credentials) {
+function authorization(path, method, credentials, bodyText?: string) {
   if (!credentials) return {};
   const { name, secret } = credentials;
   if (realm.mode === "simulation") {
     const bytes = new TextEncoder().encode(`${name}:${secret}`);
     return { Authorization: "Basic " + btoa(String.fromCharCode(...bytes)) };
   }
-  const headers = {
+  const headers: Record<string, string> = {
     "admin-console": "1",
     "admin-name": name,
     "admin-nonce": requestNonce(),
     "admin-timestamp": String(Date.now())
   };
-  const parameters = Object.entries(headers).map(([key, value]) => `${key}=${value}&`).join("");
-  const endpoint = new URL(path, location.origin).pathname;
-  return { ...headers, "admin-signature": window.md5(`${endpoint}&${method}&${parameters}${secret}&`) };
+  if (bodyText !== undefined) headers["admin-body-md5"] = window.md5(bodyText);
+  const sorted = Object.keys(headers).sort();
+  const parameters = sorted.map(key => `${key}=${headers[key]}&`).join("");
+  const endpoint = new URL(path, location.origin);
+  return { ...headers, "admin-signature": window.md5(`${endpoint.pathname}${endpoint.search}&${method}&${parameters}${secret}&`) };
 }
 
 function validateEndpoint(path) {
@@ -117,17 +119,18 @@ function validateEndpoint(path) {
 export async function request(path: string, { body, method: explicitMethod, key, site, token, anonymous = false }: RequestOptions = {}): Promise<any> {
   const endpoint = validateEndpoint(path);
   const method = explicitMethod || (body === undefined ? "GET" : "POST");
-  const headers = { Accept: "application/json", ...(anonymous ? {} : authorization(path, method, realm.credentials)) };
+  const multipart = body instanceof FormData;
+  const bodyText = body !== undefined && !multipart ? JSON.stringify(body) : undefined;
+  const headers = { Accept: "application/json", ...(anonymous ? {} : authorization(path, method, realm.credentials, bodyText)) };
   if (site) headers["Current-Site"] = site;
   if (token && endpoint.pathname.startsWith("/open/")) headers.Authorization = token;
   if (key) headers["Idempotency-Key"] = key;
-  const multipart = body instanceof FormData;
   if ((method === "POST" || method === "PUT") && body !== undefined && !multipart) {
     headers["Content-Type"] = "application/json";
   }
   const response = await fetch(path, {
     method, headers, cache: "no-store", credentials: "same-origin",
-    body: multipart ? body : (body !== undefined ? JSON.stringify(body) : undefined)
+    body: multipart ? body : bodyText
   });
   const data = response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
   if (!response.ok) {
@@ -147,14 +150,15 @@ export async function request(path: string, { body, method: explicitMethod, key,
 export async function streamRequest(path: string, { body, method: explicitMethod, onEvent, signal }: StreamOptions = {}): Promise<void> {
   validateEndpoint(path);
   const method = explicitMethod || (body === undefined ? "GET" : "POST");
+  const bodyText = body !== undefined ? JSON.stringify(body) : undefined;
   const headers = {
     Accept: "text/event-stream",
-    ...authorization(path, method, realm.credentials)
+    ...authorization(path, method, realm.credentials, bodyText)
   };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (bodyText !== undefined) headers["Content-Type"] = "application/json";
   const response = await fetch(path, {
     method, headers, cache: "no-store", credentials: "same-origin", signal,
-    body: body !== undefined ? JSON.stringify(body) : undefined
+    body: bodyText
   });
   if (!response.ok) {
     const data = response.headers.get("content-type")?.includes("application/json")

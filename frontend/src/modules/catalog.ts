@@ -247,7 +247,7 @@ function edit(editor, row, readOnly, refresh) {
     ? `<label class="all">文案组<input name="name" value="${e(row?.name)}" required ${readOnly ? "readonly" : ""}></label>
        <label class="all">广告文案（每行一条）<textarea name="text" rows="7" required ${readOnly ? "readonly" : ""}>${e(row?.textList?.join("\n"))}</textarea></label>`
     : `<label>站点${row ? `<input name="site" readonly value="${e(row.site)}">` : '<select name="site" required><option value="">正在读取…</option></select>'}</label>
-       <label>渠道<input name="channel" value="${e(row?.channel)}" required ${row ? "readonly" : ""}></label>
+       <label>渠道<input name="channel" value="${e(row?.channel)}" required></label>
        <label class="all">说明<input name="desc" value="${e(row?.desc)}" required ${readOnly ? "readonly" : ""}></label>
        <label class="all">配置值<textarea name="value" rows="6" required ${readOnly ? "readonly" : ""}>${e(row?.value)}</textarea></label>`}</div>
     <div class="editor-error"></div>${readOnly ? "" : '<div class="form-actions"><button type="submit" class="button">保存</button></div>'}</form>`);
@@ -259,7 +259,7 @@ function edit(editor, row, readOnly, refresh) {
     const values = formValues(form);
     busy($("button", form), async () => {
       const body: Record<string, any> = copy ? { name: values.name, textList: values.text.split(/\r?\n/).map(line => line.trim()).filter(Boolean), ...(row ? { id: row.id } : {}) }
-        : { ...values, value: new FormData(form).get("value") };
+        : { ...values, ...(row ? { oldChannel: row.channel } : {}), value: new FormData(form).get("value") };
       if (copy && (!body.name || !body.textList.length)) throw new Error("请填写文案组名称和至少一条广告文案");
       const result = await request(`${copy ? "/cms/ad/text/console" : "/cms/report/config"}/${row ? "edit" : "add"}`, { body });
       if (typeof result === "string" && result) throw new Error(result);
