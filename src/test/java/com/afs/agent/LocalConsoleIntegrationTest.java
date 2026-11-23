@@ -141,9 +141,10 @@ class LocalConsoleIntegrationTest {
         var options = call(get(base + "/options"), "GET", base + "/options", null, 200);
         assertThat(options.at("/data/channels/0/id").asText()).isEqualTo(reportChannel);
         assertThat(options.at("/data/dates/0").asText()).isEqualTo(date);
-        var detail = call(get(base + "/adsense").param("reportChannel", reportChannel)
-                .param("dateStart", date).param("dateEnd", date).param("countryCode", "US"),
-                "GET", base + "/adsense", null, 200);
+        var detail = call(get(base + "/adsense?reportChannel=" + reportChannel
+                        + "&dateStart=" + date + "&dateEnd=" + date + "&countryCode=US"),
+                "GET", base + "/adsense?reportChannel=" + reportChannel
+                        + "&dateStart=" + date + "&dateEnd=" + date + "&countryCode=US", null, 200);
         assertThat(detail.at("/data/list").size()).isEqualTo(1);
         assertThat(detail.at("/data/list/0/revenue").asDouble()).isEqualTo(20);
 
@@ -217,15 +218,17 @@ class LocalConsoleIntegrationTest {
     }
 
     private JsonNode call(MockHttpServletRequestBuilder request, String method, String path, Object body, int statusCode) throws Exception {
+        byte[] payload = body == null ? null : json.writeValueAsBytes(body);
         var headers = new TreeMap<>(Map.of("admin-console", "1", "admin-name", "local-admin",
                 "admin-nonce", UUID.randomUUID().toString(), "admin-timestamp", Long.toString(System.currentTimeMillis())));
+        if (payload != null) headers.put("admin-body-md5", Coder.from(payload).md5().asHexLower());
         var signed = new StringBuilder(path).append("&").append(method).append("&");
         headers.forEach((name, value) -> {
             request.header(name, value);
             signed.append(name).append("=").append(value).append("&");
         });
         request.header("admin-signature", Coder.from(signed.append(SIGNING_KEY).append("&").toString()).md5().asHexLower());
-        if (body != null) request.contentType("application/json").content(json.writeValueAsBytes(body));
+        if (payload != null) request.contentType("application/json").content(payload);
         return json.readTree(cms.perform(request).andExpect(status().is(statusCode)).andReturn().getResponse().getContentAsByteArray());
     }
 }

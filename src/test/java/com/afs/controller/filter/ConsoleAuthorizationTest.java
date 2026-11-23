@@ -5,6 +5,7 @@ import com.afs.dao.model.User;
 import com.afs.utils.Coder;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -40,7 +41,7 @@ class ConsoleAuthorizationTest {
         ReflectionTestUtils.setField(interceptor, "localWorkspace", true);
         var unsigned = new MockHttpServletRequest("POST", path);
         unsigned.addHeader("admin-name", "local-admin");
-        var signed = signed(User.RootUser, "local-admin");
+        var signed = signed(User.RootUser, "local-admin", true);
         var denied = new MockHttpServletResponse();
         assertThat(interceptor.preHandle(unsigned, denied, handler())).isFalse();
         assertThat(denied.getStatus()).isEqualTo(401);
@@ -50,26 +51,27 @@ class ConsoleAuthorizationTest {
     }
 
     @Test
-    void consoleEnforcesRootForRuleChangesAndPreservesLegacyClientCompatibility() throws Exception {
-        var unsignedLegacy = new MockHttpServletRequest("POST", path);
-        assertThat(interceptor.preHandle(unsignedLegacy, new MockHttpServletResponse(), handler())).isTrue();
+    void rootIsRequiredForRuleChangesEvenWithoutConsoleHeader() throws Exception {
+        ReflectionTestUtils.setField(interceptor, "localWorkspace", true);
 
+        var unsigned = new MockHttpServletRequest("POST", path);
+        unsigned.addHeader("admin-name", "sample");
         var denied = new MockHttpServletResponse();
-        assertThat(interceptor.preHandle(signed(User.CommonUser), denied, handler())).isFalse();
-        assertThat(denied.getStatus()).isEqualTo(403);
+        assertThat(interceptor.preHandle(unsigned, denied, handler())).isFalse();
+        assertThat(denied.getStatus()).isEqualTo(401);
 
-        var approved = signed(User.RootUser);
-        var response = new MockHttpServletResponse();
-        var handler = handler();
-        assertThat(interceptor.preHandle(approved, response, handler)).isTrue();
-        interceptor.afterCompletion(approved, response, handler, null);
+        var nonRoot = signed(User.CommonUser, "sample", false);
+        var forbidden = new MockHttpServletResponse();
+        assertThat(interceptor.preHandle(nonRoot, forbidden, handler())).isFalse();
+        assertThat(forbidden.getStatus()).isEqualTo(403);
+
+        var root = signed(User.RootUser, "sample", false);
+        var approved = new MockHttpServletResponse();
+        assertThat(interceptor.preHandle(root, approved, handler())).isTrue();
+        interceptor.afterCompletion(root, approved, handler(), null);
     }
 
-    private MockHttpServletRequest signed(int role) {
-        return signed(role, "sample");
-    }
-
-    private MockHttpServletRequest signed(int role, String username) {
+    private MockHttpServletRequest signed(int role, String username, boolean console) {
         var user = new User();
         user.setName(username);
         user.setPassword("test-signing-secret");
@@ -77,9 +79,11 @@ class ConsoleAuthorizationTest {
         user.setStatus(User.StatusValid);
         when(users.get(user.getName())).thenReturn(user);
         var request = new MockHttpServletRequest("POST", path);
-        var headers = new TreeMap<>(Map.of(
-                "admin-console", "1", "admin-name", user.getName(), "admin-nonce", "test-nonce",
-                "admin-timestamp", Long.toString(System.currentTimeMillis())));
+        var headers = new TreeMap<String, String>();
+        headers.put("admin-name", user.getName());
+        headers.put("admin-nonce", UUID.randomUUID().toString());
+        headers.put("admin-timestamp", Long.toString(System.currentTimeMillis()));
+        if (console) headers.put("admin-console", "1");
         var signature = new StringBuilder(path).append("&POST&");
         headers.forEach((name, value) -> {
             request.addHeader(name, value);
@@ -91,10 +95,8 @@ class ConsoleAuthorizationTest {
     }
 
     private HandlerMethod handler() throws NoSuchMethodException {
-        return new HandlerMethod(this, getClass().getMethod("legacyHandler"));
+        return new HandlerMethod(this, getClass().getMethod("protectedHandler"));
     }
 
-    @NoAuth
-    public void legacyHandler() {}
+    public void protectedHandler() {}
 }
-
