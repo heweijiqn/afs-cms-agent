@@ -1,3 +1,4 @@
+import { openEvidenceImport } from "./overseas-forms.js";
 import { request, requestList } from "./api.js";
 import { $, escape as e, n, numeric, percent, money, toneBadge, roasBadge, table, formValues, errorIn, toast, busy } from "./ui.js";
 import { openCatalogSection } from "./catalog.js";
@@ -354,7 +355,7 @@ async function renderCreativeLabPanel(target: HTMLElement, onDiagnose: (cid: str
       <section class="panel">
         <div class="panel-head"><div><h3>待换新疲劳活动（自动检测）</h3></div></div>
         ${table(
-          ["活动名称", "平台", "花费", "ROAS", "疲劳指数", "诊断说明", "操作"],
+          ["活动名称", "平台", "花费", "ROAS", "CTR 衰退幅度 %", "诊断说明", "操作"],
           fatigued.map((f: any) => [
             `<strong>${e(f.name)}</strong><br><small class="muted mono">${e(f.campaignId)}</small>`,
             e(f.platform || "—"),
@@ -367,15 +368,16 @@ async function renderCreativeLabPanel(target: HTMLElement, onDiagnose: (cid: str
               <button type="button" class="table-link" data-fat-diag="${e(f.campaignId)}">诊断</button>
             </div>`
           ]),
-          "当前所有在投活动创意健康度良好"
+          "暂无足够观测，或未命中 CTR 衰退条件"
         )}
       </section>
 
       <section class="panel" id="creative-ab-panel">
         <div class="panel-head">
           <div>
-            <h3>A/B 测试实时对比看板（共 ${abTests.length} 组）</h3>
-            <p class="sub">判定完成标准：累计曝光达到目标样本（20,000 次）且双样本统计置信度 ≥ 90% 时自动标记为「实验已完成 · 待确认结案」；点击「采纳胜出并入库」或「终止实验」后正式结案归档。</p>
+            <button type="button" class="button secondary small" id="experiment-import">导入实验观测</button>
+            <h3>A/B 测试观测对比看板（共 ${abTests.length} 组）</h3>
+            <p class="sub">按实际导入曝光和点击计算双样本 CTR 检验，多组比较使用 Bonferroni 校正；显示 1−校正 p 值，不代表胜出概率。须同一日期区间且满足近似条件。分流需在广告平台配置。</p>
           </div>
           <div class="action-set">
             ${toneBadge(`待结案 ${abTests.filter((x: any) => x.lifecycleState === "READY_TO_CONCLUDE").length}`, "teal")}
@@ -402,11 +404,11 @@ async function renderCreativeLabPanel(target: HTMLElement, onDiagnose: (cid: str
               `<div class="pacing-cell"><progress class="pacing-meter tone-${exp.sampleProgressPct >= 100 ? "teal" : "amber"}" max="100" value="${exp.sampleProgressPct ?? 100}"></progress><span class="mono">${exp.sampleProgressPct ?? 100}%</span></div><small class="muted mono">${numeric(exp.controlImpressions)} / ${numeric(exp.variantImpressions)}（目标 ${numeric(exp.targetSample || 20000)}）</small>`,
               `<span class="mono">${percent(exp.controlCtr)} → <strong>${percent(exp.variantCtr)}</strong></span> ${toneBadge(`+${exp.ctrLiftPct}%`, "teal")}`,
               `<span class="mono">${e(exp.controlRoas)}× → <strong>${e(exp.variantRoas)}×</strong></span> ${toneBadge(`+${exp.roasLiftPct}%`, "teal")}`,
-              `${toneBadge(`置信度 ${exp.confidencePct}%`, exp.verdict === "VARIANT_WINNING" ? "teal" : "amber")}<br><small class="muted">${e(exp.verdictLabel)}</small>`,
+              `${toneBadge(`1−校正 p ${numeric(exp.confidencePct)}%`, exp.verdict === "VARIANT_WINNING" ? "teal" : "amber")}<br><small class="muted">${e(exp.verdictLabel)}</small>`,
               actionsHtml
             ];
           }),
-          "当前暂无 A/B 测试记录。在下方创意草稿箱点击「发起 A/B 测试」即可启动 50%/50% 分流对照实验。"
+          "当前暂无 A/B 测试记录。先在广告平台配置分流，再导入各组按日观测。"
         )}
       </section>
 
@@ -445,6 +447,7 @@ async function renderCreativeLabPanel(target: HTMLElement, onDiagnose: (cid: str
       </section>
     `;
 
+    $("#experiment-import",target).onclick=()=>openEvidenceImport("experiments",()=>renderCreativeLabPanel(target,onDiagnose));
     const form = $("#creative-gen-form", target) as HTMLFormElement;
     form.onsubmit = (ev) => {
       ev.preventDefault();
@@ -486,7 +489,7 @@ async function renderCreativeLabPanel(target: HTMLElement, onDiagnose: (cid: str
           body: { status: nextSt }
         });
         toast(nextSt === "AB_TESTING"
-          ? "已启动 50%/50% 分流 A/B 实验，可在上方实验看板查看进度与结论"
+          ? "已登记待观测实验；请在广告平台配置分流并导入各组日报"
           : nextSt === "AB_STOPPED"
             ? "实验已结束（已手动终止）"
             : nextSt === "AB_ADOPTED"
@@ -705,13 +708,13 @@ async function renderLocalizationAndPolicyRadar(target: HTMLElement, onDiagnose:
           });
           const score = res.riskScore ?? 95;
           const scoreClass = score >= 85 ? "score-green" : score >= 60 ? "score-amber" : "score-red";
-          const levelLabel = res.riskLevel === "COMPLIANT" ? "合规安全 (COMPLIANT)" : res.riskLevel === "WARNING" ? "轻度风险 (WARNING)" : "严重违规 (VIOLATION)";
+          const levelLabel = res.riskLevel === "COMPLIANT" ? "未发现明显风险（需复核）" : res.riskLevel === "WARNING" ? "轻度风险 (WARNING)" : "严重违规 (VIOLATION)";
           const tokens = (res.flaggedTokens || []) as string[];
 
           radarBox.innerHTML = `
             <div class="radar-box">
               <div class="radar-box-head">
-                <span class="radar-score-pill ${scoreClass}">合规安全评分：${score} / 100</span>
+                <span class="radar-score-pill ${scoreClass}">风险筛查评分：${score} / 100</span>
                 ${toneBadge(levelLabel, score >= 85 ? "teal" : score >= 60 ? "amber" : "red")}
               </div>
               ${tokens.length > 0 ? `
@@ -721,10 +724,10 @@ async function renderLocalizationAndPolicyRadar(target: HTMLElement, onDiagnose:
                     ${tokens.map(t => `<span class="radar-token-tag">${e(t)}</span>`).join("")}
                   </div>
                 </div>
-              ` : '<div style="font-size:12.5px;color:#15803d;margin-bottom:6px">✓ 未检测到高危违规关键词或侵权用语</div>'}
+              ` : '<div style="font-size:12.5px;color:#15803d;margin-bottom:6px">✓ 当前检查未命中风险；商标授权与宣称真实性须人工核实</div>'}
               <div class="radar-sugg-box">
                 <strong>✦ 政策合规专家修改建议：</strong><br>
-                ${e(res.aiRevisionSuggestion || "无特别风险，可直接投放")}
+                ${e(res.notice || "")}<br>${e(res.aiRevisionSuggestion || "请人工复核资质、事实与平台政策")}
               </div>
             </div>
           `;

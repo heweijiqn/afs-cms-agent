@@ -45,6 +45,17 @@ class CmsCampaignDataService {
         return localWorkspace;
     }
 
+    boolean hasPlatformObservation(CampaignSummary campaign, LocalDate date) {
+        if(!localWorkspace) return scenarios.campaigns().stream().anyMatch(c->c.campaignId().equals(campaign.campaignId()) && c.daily().stream().anyMatch(d->d.date().equals(date)));
+        String table=switch(campaign.platform()==null?"":campaign.platform()) {
+            case "TikTok" -> "tiktok_data"; case "Google" -> "google_data";
+            case "Facebook","Meta" -> "meta_data"; case "Taboola" -> "taboola_data";default -> "";
+        };
+        if(table.isEmpty())return false;
+        Integer rows=db.queryForObject("SELECT COUNT(*) FROM "+table+" WHERE `date`=? AND (campaign_id=? OR (?<>'' AND channel_id=?)) AND conversion IS NOT NULL",Integer.class,date.toString(),campaign.campaignId(),campaign.channel()==null?"":campaign.channel(),campaign.channel()==null?"":campaign.channel());
+        return rows!=null&&rows>0;
+    }
+
     /** Lists campaigns available for 1-click AI optimization or Copilot search. */
     List<CampaignSummary> listCampaigns(String query, String platform, int limit) {
         int safeLimit = Math.max(1, Math.min(limit <= 0 ? 30 : limit, 250));
@@ -88,9 +99,6 @@ class CmsCampaignDataService {
             BigDecimal profit = revenue.subtract(spend).setScale(2, RoundingMode.HALF_UP);
             BigDecimal roas = spend.signum() > 0 ? revenue.divide(spend, 4, RoundingMode.HALF_UP) : null;
             BigDecimal obsBudget = bd(row.getDouble("observed_budget"));
-            if (obsBudget.signum() <= 0 && spend.signum() > 0) {
-                obsBudget = spend.divide(BigDecimal.valueOf(14), 2, RoundingMode.HALF_UP);
-            }
             return new CampaignSummary(
                     row.getString("ad_resource_id"),
                     firstNonBlank(row.getString("campaign"), row.getString("title"), row.getString("ad_resource_id")),
@@ -165,13 +173,6 @@ class CmsCampaignDataService {
         List<CmsReportSource.Day> daily = loadDailyRows(resolvedId, resolvedChannel, start, end);
         if (daily.isEmpty()) {
             return null;
-        }
-        if (observedBudget == null) {
-            BigDecimal totalSpend = daily.stream().map(CmsReportSource.Day::spend).reduce(BigDecimal.ZERO, BigDecimal::add);
-            long activeDays = daily.stream().filter(d -> d.spend().signum() > 0).count();
-            if (activeDays > 0 && totalSpend.signum() > 0) {
-                observedBudget = totalSpend.divide(BigDecimal.valueOf(activeDays), 2, RoundingMode.HALF_UP);
-            }
         }
         List<CmsReportSource.Segment> segments = loadCountrySegments(resolvedId, resolvedChannel, start, end);
         List<CmsReportSource.Creative> creatives = loadCreativeMetrics(resolvedId);
@@ -719,15 +720,7 @@ class CmsCampaignDataService {
                     acc.clicks = Math.max(acc.clicks, Math.round(num(row.get("fallback_clicks"))));
                     acc.conversions = Math.max(acc.conversions, Math.round(num(row.get("fallback_conv"))));
                 }
-                if (acc.impressions <= 0 && num(row.get("adsense_imp")) > 0) {
-                    acc.impressions = Math.round(num(row.get("adsense_imp")));
-                }
-                if (acc.clicks <= 0 && num(row.get("adsense_funnel_clicks")) > 0) {
-                    acc.clicks = Math.round(num(row.get("adsense_funnel_clicks")));
-                }
-                if (acc.conversions <= 0 && num(row.get("adsense_clicks")) > 0) {
-                    acc.conversions = Math.round(num(row.get("adsense_clicks")));
-                }
+                // Publisher ad clicks are not acquisition-platform conversions or clicks.
             }
             return byDate.entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())

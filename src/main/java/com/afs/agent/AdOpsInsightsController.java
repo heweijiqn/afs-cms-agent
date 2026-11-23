@@ -11,19 +11,21 @@ import org.springframework.web.bind.annotation.*;
 class AdOpsInsightsController {
 
     private final AdOpsInsightsService service;
+    private final OverseasDataService observations;
 
-    AdOpsInsightsController(AdOpsInsightsService service) {
+    AdOpsInsightsController(AdOpsInsightsService service, OverseasDataService observations) {
         this.service = service;
+        this.observations = observations;
     }
 
     @GetMapping("/funnel")
-    Map<String, Object> funnel(@RequestParam(required = false) String platform) {
-        return service.buildFunnelAndMatrix(platform);
+    Map<String, Object> funnel(@RequestParam(required = false) String platform,@RequestParam(defaultValue="USD") String currency) {
+        return observations.convertDisplay(service.buildFunnelAndMatrix(platform),currency);
     }
 
     @GetMapping("/pacing")
-    Map<String, Object> pacing(@RequestParam(required = false) String platform) {
-        return service.buildBudgetPacing(platform);
+    Map<String, Object> pacing(@RequestParam(required = false) String platform,@RequestParam(defaultValue="USD") String currency) {
+        return observations.convertDisplay(service.buildBudgetPacing(platform),currency);
     }
 
     @GetMapping("/alerts/rules")

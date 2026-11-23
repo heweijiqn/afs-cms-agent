@@ -41,6 +41,7 @@ import org.springframework.web.server.ResponseStatusException;
 class AdAgentExtensionsService {
 
     private final JdbcTemplate db;
+    private final OverseasEvidenceService evidence;
     private final ObjectMapper json;
     private final CmsCampaignDataService cmsData;
     private final AdOpsInsightsService opsInsights;
@@ -54,7 +55,8 @@ class AdAgentExtensionsService {
                              CmsCampaignDataService cmsData,
                              AdOpsInsightsService opsInsights,
                              AiModelGateway gateway,
-                             AgentTelemetryService telemetry) {
+                             AgentTelemetryService telemetry, OverseasEvidenceService evidence) {
+        this.evidence = evidence;
         this.db = db;
         this.json = json;
         this.cmsData = cmsData;
@@ -497,29 +499,23 @@ class AdAgentExtensionsService {
     // 4. Creative Fatigue Detector & Multi-Platform Copy/Script Lab
     // =========================================================================
 
-    List<Map<String, Object>> detectFatiguedCampaigns() {
-        List<CmsCampaignDataService.CampaignSummary> campaigns = cmsData.listCampaigns("", "", 120);
-        List<Map<String, Object>> list = new ArrayList<>();
-        for (CmsCampaignDataService.CampaignSummary c : campaigns) {
-            double spend = c.spend() == null ? 0.0 : c.spend().doubleValue();
-            double rev = c.revenue() == null ? 0.0 : c.revenue().doubleValue();
-            if (spend < 25.0) continue;
-            double roas = spend > 0 ? rev / spend : 0.0;
-            if (roas < 1.15) {
-                int fatigueScore = (int) Math.min(98, Math.max(45, Math.round((1.25 - roas) * 100 + Math.min(25, spend / 80.0))));
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("campaignId", c.campaignId());
-                m.put("name", c.name());
-                m.put("platform", c.platform());
-                m.put("spend", round(spend, 2));
-                m.put("roas", round(roas, 2));
-                m.put("fatigueScore", fatigueScore);
-                m.put("reason", roas < 0.9 ? "ROAS 显著低于盈亏线，急需替换主素材与首图 Hook" : "转化效率开始衰减，建议补充 3 组新创意轮换测试");
-                list.add(m);
-            }
+    List<Map<String,Object>> detectFatiguedCampaigns() {
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(var c:cmsData.listCampaigns("","",120)) {
+            var evidence=cmsData.loadCampaignEvidence(c.campaignId(),c.site(),c.channel(),null,null);
+            if(evidence==null||evidence.daily().size()<3)continue;
+            var daily=evidence.daily().stream().sorted(Comparator.comparing(CmsReportSource.Day::date)).toList();
+            var last=daily.get(daily.size()-1);
+            var baseline=daily.stream().filter(d->d.date().isBefore(last.date())&&!d.date().isBefore(last.date().minusDays(7))).toList();
+            long impressions=baseline.stream().mapToLong(CmsReportSource.Day::impressions).sum(),clicks=baseline.stream().mapToLong(CmsReportSource.Day::clicks).sum();
+            if(impressions<=0||clicks<=0||last.impressions()<1000)continue;
+            double ctr=(double)last.clicks()/last.impressions(),previous=(double)clicks/impressions,decline=(previous-ctr)/previous*100;
+            if(decline<25)continue;
+            var m=new LinkedHashMap<String,Object>();m.put("campaignId",c.campaignId());m.put("name",c.name());m.put("platform",c.platform());
+            m.put("spend",last.spend());m.put("roas",last.spend().signum()>0?last.revenue().divide(last.spend(),4,RoundingMode.HALF_UP):null);
+            m.put("fatigueScore",(int)Math.min(100,Math.round(decline)));m.put("reason",last.date()+" CTR 相对前 7 日下降 "+round(decline,1)+"%；缺少触达人数，未判断频次饱和");result.add(m);
         }
-        list.sort(Comparator.comparingInt((Map<String, Object> m) -> (Integer) m.get("fatigueScore")).reversed());
-        return list.stream().limit(10).toList();
+        return result;
     }
 
     Map<String, Object> generateCreativeDrafts(String campaignId, String campaignName, String platform, String style, String actor) {
@@ -627,82 +623,8 @@ class AdAgentExtensionsService {
         return Map.of("id", id, "status", safe, "actor", actor);
     }
 
-    List<Map<String, Object>> listCreativeAbTests() {
-        List<Map<String, Object>> drafts = listCreativeDrafts().stream()
-                .filter(d -> {
-                    String st = String.valueOf(d.get("status"));
-                    return "AB_TESTING".equals(st) || "AB_ADOPTED".equals(st) || "AB_STOPPED".equals(st);
-                })
-                .toList();
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> d : drafts) {
-            long id = ((Number) d.get("id")).longValue();
-            String status = String.valueOf(d.get("status"));
-            String headline = String.valueOf(d.get("headline"));
-            String plat = String.valueOf(d.get("platform"));
-            String topic = String.valueOf(d.getOrDefault("campaignName", "默认活动"));
-            int seed = Math.abs((headline + id).hashCode() % 100);
-
-            long targetSample = 20000L;
-            long ctrlImp = 8400L + (seed * 110L);
-            long varImp = 8350L + (seed * 105L);
-            long totalImp = ctrlImp + varImp;
-            int sampleProgressPct = (int) Math.min(100L, Math.round(totalImp * 100.0 / targetSample));
-
-            double ctrlCtr = round(0.0185 + (seed % 8) * 0.0009, 4);
-            double liftFactor = 1.12 + (seed % 24) * 0.01;
-            double varCtr = round(ctrlCtr * liftFactor, 4);
-            double ctrLiftPct = round((varCtr - ctrlCtr) / ctrlCtr * 100.0, 1);
-
-            double ctrlRoas = round(1.06 + (seed % 15) * 0.015, 2);
-            double varRoas = round(ctrlRoas * (1.08 + (seed % 18) * 0.01), 2);
-            double roasLiftPct = round((varRoas - ctrlRoas) / ctrlRoas * 100.0, 1);
-            double confidencePct = round(Math.min(98.4, 88.5 + (seed % 11) * 0.95), 1);
-            boolean reachedSignificance = sampleProgressPct >= 100 && confidencePct >= 90.0;
-
-            String lifecycleState;
-            String lifecycleLabel;
-            if ("AB_ADOPTED".equals(status)) {
-                lifecycleState = "ENDED_ADOPTED";
-                lifecycleLabel = "已结束 · 已采纳胜出";
-            } else if ("AB_STOPPED".equals(status)) {
-                lifecycleState = "ENDED_STOPPED";
-                lifecycleLabel = "已结束 · 已手动终止";
-            } else if (reachedSignificance) {
-                lifecycleState = "READY_TO_CONCLUDE";
-                lifecycleLabel = "实验已完成 · 待确认结案";
-            } else {
-                lifecycleState = "RUNNING";
-                lifecycleLabel = "运行中 · 样本采集中";
-            }
-
-            Map<String, Object> exp = new LinkedHashMap<>();
-            exp.put("draftId", id);
-            exp.put("status", status);
-            exp.put("lifecycleState", lifecycleState);
-            exp.put("lifecycleLabel", lifecycleLabel);
-            exp.put("experimentCode", "EXP-" + (1000 + id));
-            exp.put("campaignName", topic);
-            exp.put("platform", plat);
-            exp.put("variantHeadline", headline);
-            exp.put("trafficSplit", "50% / 50%");
-            exp.put("targetSample", targetSample);
-            exp.put("totalImpressions", totalImp);
-            exp.put("sampleProgressPct", sampleProgressPct);
-            exp.put("controlImpressions", ctrlImp);
-            exp.put("variantImpressions", varImp);
-            exp.put("controlCtr", ctrlCtr);
-            exp.put("variantCtr", varCtr);
-            exp.put("ctrLiftPct", ctrLiftPct);
-            exp.put("controlRoas", ctrlRoas);
-            exp.put("variantRoas", varRoas);
-            exp.put("roasLiftPct", roasLiftPct);
-            exp.put("confidencePct", confidencePct);
-            exp.put("verdict", reachedSignificance ? "VARIANT_WINNING" : "COLLECTING_SAMPLE");
-            exp.put("verdictLabel", reachedSignificance ? "实验组 B 胜出（样本与显著性均已达标）" : "样本积累中（目标 20,000 曝光 & 置信度 ≥90%）");
-            out.add(exp);
-        }
-        return out;
+    List<Map<String,Object>> listCreativeAbTests() {
+        return evidence.experiments();
     }
 
     private void syncPublishedDraftsToAdText() {

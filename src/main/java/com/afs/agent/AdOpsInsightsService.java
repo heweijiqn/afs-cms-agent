@@ -44,10 +44,16 @@ class AdOpsInsightsService {
         BigDecimal totalRevenue = BigDecimal.ZERO;
 
         Map<String, double[]> byPlatform = new LinkedHashMap<>();
+        Map<String,double[]> byCountry = new LinkedHashMap<>();
         List<Map<String, Object>> winners = new ArrayList<>();
         List<Map<String, Object>> bleeders = new ArrayList<>();
 
         for (CmsCampaignDataService.CampaignSummary c : campaigns) {
+            for(var segment:cmsData.getCountryBreakdown(c.campaignId(),c.channel(),null,null)) {
+                String country=String.valueOf(segment.getOrDefault("country",segment.getOrDefault("segment","UNKNOWN")));
+                double[] totals=byCountry.computeIfAbsent(country,k->new double[3]);
+                totals[0]+=OverseasDataService.num(segment,"spend");totals[1]+=OverseasDataService.num(segment,"impressions");totals[2]+=OverseasDataService.num(segment,"clicks");
+            }
             BigDecimal spend = nz(c.spend());
             BigDecimal rev = nz(c.revenue());
             BigDecimal profit = rev.subtract(spend).setScale(2, RoundingMode.HALF_UP);
@@ -56,11 +62,10 @@ class AdOpsInsightsService {
             totalSpend = totalSpend.add(spend);
             totalRevenue = totalRevenue.add(rev);
 
-            // Derive grounded funnel counts from real platform economics when summary-only
-            long clicks = spend.signum() > 0 ? Math.max(1L, Math.round(spend.doubleValue() / estimateCpc(c.platform()))) : 0L;
-            long imps = clicks > 0 ? Math.max(clicks * 12L, Math.round(clicks / estimateCtr(c.platform()))) : 0L;
-            long convs = clicks > 0 ? Math.max(spend.doubleValue() >= 20 ? 1L : 0L, Math.round(clicks * estimateCvr(c.platform(), roas))) : 0L;
-
+            var evidence = cmsData.loadCampaignEvidence(c.campaignId(),c.site(),c.channel(),null,null);
+            long clicks=evidence==null?0:evidence.daily().stream().mapToLong(CmsReportSource.Day::clicks).sum();
+            long imps=evidence==null?0:evidence.daily().stream().mapToLong(CmsReportSource.Day::impressions).sum();
+            long convs=evidence==null?0:evidence.daily().stream().mapToLong(CmsReportSource.Day::conversions).sum();
             totalImpressions += imps;
             totalClicks += clicks;
             totalConversions += convs;
@@ -91,25 +96,8 @@ class AdOpsInsightsService {
             }
         }
 
-        // Pull exact aggregate impressions/clicks/conversions from ad_data when in local-cms
-        if (cmsData.isLocalWorkspace()) {
-            try {
-                String sql = "SELECT COALESCE(SUM(ad_impressions),0) AS imp, COALESCE(SUM(ad_clicks),0) AS clk, COALESCE(SUM(ad_conversion),0) AS conv FROM ad_data";
-                Map<String, Object> agg = db.queryForMap(sql);
-                long dbImp = toLong(agg.get("IMP"));
-                long dbClk = toLong(agg.get("CLK"));
-                long dbConv = toLong(agg.get("CONV"));
-                if ((platform == null || platform.isBlank()) && dbImp > 0 && dbClk > 0) {
-                    totalImpressions = dbImp;
-                    totalClicks = dbClk;
-                    if (dbConv > 0) totalConversions = dbConv;
-                }
-            } catch (Exception ignored) {
-                // Fall back to derived platform-calibrated totals
-            }
-        }
-
-        long engagedVisits = Math.max(totalConversions, Math.round(totalClicks * 0.78));
+        // Engagement is not present in platform daily reports. Do not fabricate it from clicks.
+        long engagedVisits = 0;
         double ctr = totalImpressions > 0 ? (double) totalClicks / totalImpressions : 0.0;
         double engageRate = totalClicks > 0 ? (double) engagedVisits / totalClicks : 0.0;
         double cvr = totalClicks > 0 ? (double) totalConversions / totalClicks : 0.0;
@@ -121,8 +109,8 @@ class AdOpsInsightsService {
                         "覆盖触达规模", "info"),
                 funnelStage("广告点击", "Clicks (CTR)", totalClicks, ctr,
                         ctr < 0.015 ? "CTR 偏低，建议替换高点击素材或缩窄受众" : "点击率表现健康", ctr < 0.015 ? "warn" : "teal"),
-                funnelStage("落地页有效互动", "Engaged Visits", engagedVisits, engageRate,
-                        engageRate < 0.70 ? "落地页加载或首屏匹配存在流失" : "承接效率稳定", engageRate < 0.70 ? "warn" : "teal"),
+                funnelStage("落地页有效互动（暂无观测）", "Engaged Visits", engagedVisits, engageRate,
+                        "请导入站点访问观测后分析承接效果", "info"),
                 funnelStage("变现转化", "Conversions (CVR)", totalConversions, cvr,
                         cvr < 0.06 ? "转化承接偏弱，建议检查关键词与出价策略" : "变现转化表现良好", cvr < 0.06 ? "warn" : "teal")
         );
@@ -147,6 +135,8 @@ class AdOpsInsightsService {
         platformStats.sort(Comparator.comparingDouble((Map<String, Object> m) -> (Double) m.get("spend")).reversed());
 
         Map<String, Object> result = new LinkedHashMap<>();
+        result.put("dataSource", cmsData.isLocalWorkspace()?"PLATFORM_DAILY_REPORTS":"SIMULATION");
+        result.put("engagementAvailable", false);
         result.put("platform", platform == null || platform.isBlank() ? "ALL" : platform);
         result.put("campaignCount", campaigns.size());
         result.put("totalSpend", totalSpend.setScale(2, RoundingMode.HALF_UP));
@@ -158,6 +148,11 @@ class AdOpsInsightsService {
         result.put("cpa", round(cpa, 2));
         result.put("stages", stages);
         result.put("platformBreakdown", platformStats);
+        result.put("countryBreakdown",byCountry.entrySet().stream().map(entry->{
+            var m=new LinkedHashMap<String,Object>();double[] v=entry.getValue();m.put("country",entry.getKey());
+            m.put("regionGroup",java.util.Set.of("US","CA","GB","DE","FR","AU","NZ","JP").contains(entry.getKey().toUpperCase(Locale.ROOT))?"Tier 1（本地分组）":"其他市场");
+            m.put("spend",v[0]);m.put("cpc",v[2]>0?v[0]/v[2]:null);m.put("cpm",v[1]>0?v[0]/v[1]*1000:null);return m;
+        }).toList());
         result.put("winners", winners.stream().limit(5).toList());
         result.put("bleeders", bleeders.stream().limit(5).toList());
         return result;
@@ -188,18 +183,14 @@ class AdOpsInsightsService {
             BigDecimal profit = rev.subtract(spend).setScale(2, RoundingMode.HALF_UP);
             double roas = rev.divide(spend, 4, RoundingMode.HALF_UP).doubleValue();
 
-            BigDecimal dailyBudget = nz(c.observedBudget());
-            if (dailyBudget.doubleValue() < 20.0) {
-                dailyBudget = BigDecimal.valueOf(Math.max(25.0, spend.doubleValue() / 12.0)).setScale(2, RoundingMode.HALF_UP);
-            }
-
-            // Deterministic pacing factor derived from campaign characteristics
-            int hash = Math.abs(c.campaignId().hashCode() % 100);
-            double velocityBias = roas < 0.92 ? 1.28 : (hash > 75 ? 1.18 : (hash < 22 ? 0.62 : 0.96));
-            double spendProgress = Math.min(1.0, dayProgress * velocityBias);
-            BigDecimal todaySpend = dailyBudget.multiply(BigDecimal.valueOf(spendProgress)).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal remaining = dailyBudget.subtract(todaySpend).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-            double pacingRatio = spendProgress / dayProgress;
+            var evidence=cmsData.loadCampaignEvidence(c.campaignId(),c.site(),c.channel(),java.time.LocalDate.now(),java.time.LocalDate.now());
+            if(evidence==null || !cmsData.hasPlatformObservation(c,java.time.LocalDate.now())) continue;
+            BigDecimal dailyBudget=nz(c.observedBudget());
+            if(dailyBudget.signum()<=0) continue;
+            BigDecimal todaySpend=evidence.daily().stream().map(CmsReportSource.Day::spend).reduce(BigDecimal.ZERO,BigDecimal::add);
+            BigDecimal remaining=dailyBudget.subtract(todaySpend).max(BigDecimal.ZERO).setScale(2,RoundingMode.HALF_UP);
+            double spendProgress=todaySpend.doubleValue()/dailyBudget.doubleValue();
+            double pacingRatio=spendProgress/dayProgress;
 
             String firewallStatus;
             String firewallLabel;
@@ -407,7 +398,7 @@ class AdOpsInsightsService {
 
                 String msg = String.format(Locale.ROOT, "[%s] 活动 %s (%s) 触发「%s」：当前 %s=%.2f（阈值 %s %.2f）",
                         severity, cname, plat, ruleName, metric, val, opSymbol(op), threshold);
-                String delivery = "INBOX".equals(channel) ? "INBOX_ONLY" : "DELIVERED";
+                String delivery = "INBOX".equals(channel) ? "INBOX_ONLY" : "NOT_SENT";
                 db.update("""
                         INSERT INTO ad_alert_event(rule_id, rule_name, campaign_id, campaign_name, platform, severity,
                                                    metric_value, threshold, message, channel, delivery_status, status, handled_by)

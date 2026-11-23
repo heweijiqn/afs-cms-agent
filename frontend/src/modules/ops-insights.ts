@@ -1,3 +1,4 @@
+import { openCohortImport, openFxRates, openAutomationRule, openEvidenceImport } from "./overseas-forms.js";
 import { request, requestList } from "./api.js";
 import { $, escape as e, n, numeric, percent, money, toneBadge, roasBadge, profitDisplay, table, dialog, closeDialog, formValues, errorIn, toast, busy } from "./ui.js";
 
@@ -77,6 +78,8 @@ export function mountOverviewInsights(container: HTMLElement, onDiagnose: (campa
       </section>
     </div>
 
+    <section class="panel"><div class="panel-head"><h2>账户余额与健康状态</h2><button type="button" id="account-import" class="button secondary small">导入平台账户快照</button></div><p class="sub">以最新导入的平台状态及余额判断；超过 1 天的快照标为过期，余额可支撑天数按该日消耗计算。</p><div id="ops-account-body"></div></section>
+    <section class="panel"><div class="panel-head"><h2>落地页表现与 CVR</h2><button type="button" id="landing-import" class="button secondary small">导入落地页观测</button></div><div id="ops-landing-body"></div></section>
     <section class="panel" id="ops-cohort-panel" style="margin-top:20px">
       <div class="panel-head">
         <div>
@@ -84,6 +87,7 @@ export function mountOverviewInsights(container: HTMLElement, onDiagnose: (campa
           <p class="sub">突破单日静态 ROAS 局限，追踪 D0 / D1 / D3 / D7 / D14 / D30 队列留存与长周期回本周期（Payback Period）。</p>
         </div>
         <div class="action-set">
+          <button type="button" class="button secondary small" id="cohort-import">导入归因队列</button><button type="button" class="button secondary small" id="fx-manage">录入汇率</button>
           <div class="preset-group" id="ops-cohort-currency" role="tablist" aria-label="切换币种">
             <button type="button" class="button small" data-curr="USD">USD ($)</button>
             <button type="button" class="button secondary small" data-curr="CNY">CNY (¥)</button>
@@ -94,7 +98,7 @@ export function mountOverviewInsights(container: HTMLElement, onDiagnose: (campa
           <div class="preset-group" id="ops-cohort-days" role="tablist" aria-label="队列周期">
             <button type="button" class="button small" data-days="14">近 14 天</button>
             <button type="button" class="button secondary small" data-days="7">近 7 天</button>
-            <button type="button" class="button secondary small" data-days="30">近 30 天</button>
+            <button type="button" class="button secondary small" data-days="30">近 30 天</button><button type="button" class="button secondary small" data-days="90">近 90 天</button>
           </div>
         </div>
       </div>
@@ -109,25 +113,30 @@ export function mountOverviewInsights(container: HTMLElement, onDiagnose: (campa
   const currTabs = $("#ops-cohort-currency", container) as HTMLElement;
   const daysTabs = $("#ops-cohort-days", container) as HTMLElement;
 
+  async function loadEvidence() {
+    try{
+      const [accounts,landing]=await Promise.all([requestList("/cms/agent/overseas/accounts?currency="+encodeURIComponent(selectedCurrency)),request("/cms/agent/overseas/landing")]);
+      if(!container.isConnected)return;
+      $("#ops-account-body",container).innerHTML=table(["账号","平台","日期","余额","可支撑天数","状态"],accounts.map((r:any)=>[e(r.account_id),e(r.platform),e(r.report_date),r.displayBalance==null?"缺少汇率":money(r.displayBalance,r.displayCurrency),r.daysRemaining==null?"—":numeric(r.daysRemaining),e(r.health)]),"暂无平台账户快照，请导入余额和状态");
+      $("#ops-landing-body",container).innerHTML='<p class="sub">'+e(landing.notice)+' 相关系数：'+(landing.ttfbCvrCorrelation==null?"观测不足":numeric(landing.ttfbCvrCorrelation))+'</p>'+table(["活动","日期","URL","TTFB ms","访问","跳出率","CVR"],(landing.observations||[]).map((r:any)=>[e(r.campaign_id),e(r.report_date),e(r.url),numeric(r.ttfb_ms),numeric(r.sessions),r.bounceRate==null?"—":percent(r.bounceRate),r.cvr==null?"—":percent(r.cvr)]),"暂无落地页性能与访问观测");
+    }catch(err:any){if(container.isConnected)errorIn($("#ops-account-body",container),err.message);}
+  }
+  $("#account-import",container).onclick=()=>openEvidenceImport("accounts",loadEvidence);
+  $("#landing-import",container).onclick=()=>openEvidenceImport("landing",loadEvidence);
+  let loadRevision=0;
   async function loadData() {
-    const qs = selectedPlatform ? `?platform=${encodeURIComponent(selectedPlatform)}` : "";
-    try {
-      const [funnel, pacing, cohort] = await Promise.all([
-        request(`/cms/agent/ops/funnel${qs}`),
-        request(`/cms/agent/ops/pacing${qs}`),
-        request(`/cms/agent/overseas/cohort?platform=${encodeURIComponent(selectedPlatform)}&days=${selectedCohortDays}&currency=${encodeURIComponent(selectedCurrency)}`)
-      ]);
-      if (!container.isConnected) return;
-      renderFunnel(funnelBody, funnel, onDiagnose);
-      renderPacing(pacingBody, pacing, onDiagnose);
-      renderCohort(cohortBody, cohort, onDiagnose);
-    } catch (err: any) {
-      if (container.isConnected) {
-        errorIn(funnelBody, err?.message || "加载漏斗数据失败");
-        errorIn(pacingBody, err?.message || "加载预算监控失败");
-        errorIn(cohortBody, err?.message || "加载队列留存失败");
-      }
-    }
+    loadEvidence();
+    const qs = `?platform=${encodeURIComponent(selectedPlatform)}&currency=${encodeURIComponent(selectedCurrency)}`;
+    const rev=++loadRevision;
+    const tasks:[string,HTMLElement,(data:any)=>void][]=[
+      [`/cms/agent/ops/funnel${qs}`,funnelBody,data=>renderFunnel(funnelBody,data,onDiagnose)],
+      [`/cms/agent/ops/pacing${qs}`,pacingBody,data=>renderPacing(pacingBody,data,onDiagnose)],
+      [`/cms/agent/overseas/cohort?platform=${encodeURIComponent(selectedPlatform)}&days=${selectedCohortDays}&currency=${encodeURIComponent(selectedCurrency)}`,cohortBody,data=>renderCohort(cohortBody,data,onDiagnose)]
+    ];
+    await Promise.allSettled(tasks.map(async([url,body,render])=>{
+      try{const data=await request(url);if(container.isConnected&&rev===loadRevision)render(data);}
+      catch(err:any){if(container.isConnected&&rev===loadRevision)errorIn(body,err.message);}
+    }));
   }
 
   platTabs.querySelectorAll<HTMLButtonElement>("[data-plat]").forEach(btn => {
@@ -160,6 +169,8 @@ export function mountOverviewInsights(container: HTMLElement, onDiagnose: (campa
     };
   });
 
+  $("#cohort-import", container).onclick = () => openCohortImport(loadData);
+  $("#fx-manage", container).onclick = () => openFxRates(loadData);
   loadData();
 }
 
@@ -168,35 +179,36 @@ function renderCohort(target: HTMLElement, data: any, onDiagnose: (cid: string, 
   const cohorts = data?.cohorts || [];
   const sym = summary.currencySymbol || "$";
 
+  const metric = (value: any) => value == null ? "—" : numeric(value);
   const kpisHtml = `
     <div class="cohort-summary-grid">
       <div class="cohort-summary-card">
         <div class="label">累计队列花费</div>
-        <div class="val">${e(sym)}${numeric(summary.totalSpend || 0)}</div>
+        <div class="val">${e(sym)}${metric(summary.totalSpend)}</div>
       </div>
       <div class="cohort-summary-card">
         <div class="label">获客规模 (Acquisitions)</div>
-        <div class="val">${numeric(summary.totalAcquisitions || 0)}</div>
+        <div class="val">${metric(summary.totalAcquisitions)}</div>
       </div>
       <div class="cohort-summary-card">
         <div class="label">平均获客成本 (CAC)</div>
-        <div class="val">${e(sym)}${numeric(summary.avgCac || 0)}</div>
+        <div class="val">${e(sym)}${metric(summary.avgCac)}</div>
       </div>
       <div class="cohort-summary-card">
         <div class="label">平均回本周期 (Payback)</div>
-        <div class="val">${numeric(summary.avgPaybackDays || 0)} <span style="font-size:13px;font-weight:600">天</span></div>
+        <div class="val">${metric(summary.avgPaybackDays)} <span style="font-size:13px;font-weight:600">天</span></div>
       </div>
       <div class="cohort-summary-card">
-        <div class="label">30日预计 LTV / CAC</div>
-        <div class="val" style="color:#087c69">${numeric(summary.ltvCacRatio || 0)}x</div>
+        <div class="label">已观测 D30 LTV / CAC</div>
+        <div class="val" style="color:#087c69">${metric(summary.ltvCacRatio)}x</div>
       </div>
       <div class="cohort-summary-card">
         <div class="label">D0 → D7 → D30 ROAS</div>
-        <div class="val" style="font-size:15px">${numeric(summary.avgD0Roas || 0)}x → ${numeric(summary.avgD7Roas || 0)}x → ${numeric(summary.avgD30Roas || 0)}x</div>
+        <div class="val" style="font-size:15px">${metric(summary.avgD0Roas)}x → ${metric(summary.avgD7Roas)}x → ${metric(summary.avgD30Roas)}x</div>
       </div>
     </div>
     <div class="cohort-narrative">
-      <strong>✦ AI 出海长周期队列策略诊断：</strong>
+      <strong>归因观测说明：</strong>
       <span>${e(summary.narrative || "")}</span>
     </div>
   `;
@@ -213,27 +225,28 @@ function renderCohort(target: HTMLElement, data: any, onDiagnose: (cid: string, 
       ? toneBadge("已回本", "teal")
       : c.breakEvenStatus === "PROJECTED_RECOVERED"
       ? toneBadge("预计回本", "amber")
-      : toneBadge("高危滞后", "red");
+      : toneBadge("尚未观测到回本", "gray");
 
     return [
       `<strong>${e(c.cohortDate)}</strong>`,
       `<span class="badge gray">${e(c.platform)}</span>`,
       `<span class="mono">${e(c.currencySymbol || "$")}${numeric(c.spend)}</span>`,
       `<span class="mono">${numeric(c.acquisitions)}</span>`,
-      `<span class="${d0Class}">${numeric(c.d0Roas)}x <small>(${c.d0Retention}%)</small></span>`,
-      `<span class="${d1Class}">${numeric(c.d1Roas)}x <small>(${c.d1Retention}%)</small></span>`,
-      `<span class="${d3Class}">${numeric(c.d3Roas)}x <small>(${c.d3Retention}%)</small></span>`,
-      `<span class="${d7Class}">${numeric(c.d7Roas)}x <small>(${c.d7Retention}%)</small></span>`,
-      `<span class="${d14Class}">${numeric(c.d14Roas)}x <small>(${c.d14Retention}%)</small></span>`,
-      `<span class="${d30Class}">${numeric(c.d30Roas)}x <small>(${c.d30Retention}%)</small></span>`,
+      `<span class="${d0Class}">${metric(c.d0Roas)}x <small>(${c.d0Retention == null ? "—" : metric(c.d0Retention) + "%"})</small></span>`,
+      `<span class="${d1Class}">${metric(c.d1Roas)}x <small>(${c.d1Retention == null ? "—" : metric(c.d1Retention) + "%"})</small></span>`,
+      `<span class="${d3Class}">${metric(c.d3Roas)}x <small>(${c.d3Retention == null ? "—" : metric(c.d3Retention) + "%"})</small></span>`,
+      `<span class="${d7Class}">${metric(c.d7Roas)}x <small>(${c.d7Retention == null ? "—" : metric(c.d7Retention) + "%"})</small></span>`,
+      `<span class="${d14Class}">${metric(c.d14Roas)}x <small>(${c.d14Retention == null ? "—" : metric(c.d14Retention) + "%"})</small></span>`,
+      `<span class="${d30Class}">${metric(c.d30Roas)}x <small>(${c.d30Retention == null ? "—" : metric(c.d30Retention) + "%"})</small></span>`,
       `<span class="mono">${c.paybackDays != null ? c.paybackDays + " 天" : "未达标"}</span>`,
+      c.forecast?.available ? `<span class="mono">预测 D30 ${numeric(c.forecast.projectedD30Roas)}×<br>R² ${numeric(c.forecast.rSquared)}</span>` : `<small>${e(c.forecast?.reason || "缺少拟合观测")}</small>`,
       statusBadge
     ];
   });
 
   const tableHtml = table(
-    ["队列批次", "渠道", "首日花费", "获客数", "D0 ROAS", "D1 ROAS", "D3 ROAS", "D7 ROAS", "D14 ROAS", "D30 ROAS", "回本天数", "回本状态"],
-    rows
+    ["队列批次", "渠道", "首日花费", "获客数", "D0 ROAS", "D1 ROAS", "D3 ROAS", "D7 ROAS", "D14 ROAS", "D30 ROAS", "首次观测回本天数", "趋势外推（非实际收入）", "回本状态"],
+    rows, "暂无归因队列数据，请导入累计归因观测"
   );
 
   target.innerHTML = kpisHtml + tableHtml;
@@ -241,12 +254,14 @@ function renderCohort(target: HTMLElement, data: any, onDiagnose: (cid: string, 
 
 
 function renderFunnel(target: HTMLElement, data: any, onDiagnose: (cid: string, btn: HTMLElement) => void) {
+  const displayMoney=(v:any)=>money(v,data.currency||"USD");
   const stages = data?.stages || [];
   const maxVal = Math.max(1, n(stages[0]?.value));
   const winners = data?.winners || [];
   const bleeders = data?.bleeders || [];
 
   const stageHtml = stages.map((st: any, idx: number) => {
+    const unavailable = idx === 2 && data.engagementAvailable === false;
     const val = n(st.value);
     // Log-scaled visual width so impressions vs conversions both remain legible
     const pct = idx === 0 ? 100 : Math.max(12, Math.min(96, Math.round((Math.log10(val + 10) / Math.log10(maxVal + 10)) * 100)));
@@ -255,8 +270,8 @@ function renderFunnel(target: HTMLElement, data: any, onDiagnose: (cid: string, 
       <div class="funnel-step-head">
         <div><strong>${e(st.name)}</strong> <span class="muted">${e(st.enName)}</span></div>
         <div class="funnel-step-meta">
-          <strong class="mono">${e(numeric(val))}</strong>
-          ${toneBadge(rateLabel, st.tone === "warn" ? "amber" : "teal")}
+          <strong class="mono">${unavailable ? "暂无观测" : e(numeric(val))}</strong>
+          ${unavailable ? "" : toneBadge(rateLabel, st.tone === "warn" ? "amber" : "teal")}
         </div>
       </div>
       <progress class="funnel-meter tone-${e(st.tone || "teal")}" max="100" value="${pct}"></progress>
@@ -270,11 +285,11 @@ function renderFunnel(target: HTMLElement, data: any, onDiagnose: (cid: string, 
       <li>
         <div class="quadrant-item-main">
           <strong>${e(r.name || r.campaignId)}</strong>
-          <span class="muted">${e(r.platform)} · 花费 ${e(money(r.spend))}</span>
+          <span class="muted">${e(r.platform)} · 花费 ${e(displayMoney(r.spend))}</span>
         </div>
         <div class="quadrant-item-right">
           ${roasBadge(r.roas)}
-          <span class="mono ${mode === "win" ? "profit-pos" : "profit-neg"}">${n(r.profit) >= 0 ? "+" : ""}${e(money(r.profit))}</span>
+          <span class="mono ${mode === "win" ? "profit-pos" : "profit-neg"}">${n(r.profit) >= 0 ? "+" : ""}${e(displayMoney(r.profit))}</span>
           <button type="button" class="table-link" data-ops-diag="${e(r.campaignId)}">诊断</button>
         </div>
       </li>`).join("")}</ul>`;
@@ -285,10 +300,12 @@ function renderFunnel(target: HTMLElement, data: any, onDiagnose: (cid: string, 
       <div><span class="muted">活动数</span><strong class="mono">${numeric(data?.campaignCount)}</strong></div>
       <div><span class="muted">综合 CTR</span><strong class="mono">${percent(data?.ctr)}</strong></div>
       <div><span class="muted">综合 CVR</span><strong class="mono">${percent(data?.cvr)}</strong></div>
-      <div><span class="muted">平均 CPA</span><strong class="mono">${money(data?.cpa)}</strong></div>
+      <div><span class="muted">平均 CPA</span><strong class="mono">${displayMoney(data?.cpa)}</strong></div>
       <div><span class="muted">整体 ROAS</span>${roasBadge(data?.roas)}</div>
     </div>
+    <p class="sub">展示币种：${e(data.currency||"USD")}；非 USD 使用录入的有日期汇率。</p>
     <div class="funnel-stages">${stageHtml}</div>
+    ${table(["国家/地区","市场分组","花费","CPC","CPM"],(data.countryBreakdown||[]).map((r:any)=>[e(r.country),e(r.regionGroup),displayMoney(r.spend),r.cpc==null?"—":displayMoney(r.cpc),r.cpm==null?"—":displayMoney(r.cpm)]),"暂无国家维度原始观测")}
     <div class="quadrant-grid">
       <div class="quadrant-box quadrant-win">
         <div class="quadrant-title"><span>明星放量活动（高 ROAS 盈利）</span>${toneBadge(`${winners.length} 个`, "teal")}</div>
@@ -307,6 +324,8 @@ function renderFunnel(target: HTMLElement, data: any, onDiagnose: (cid: string, 
 }
 
 function renderPacing(target: HTMLElement, data: any, onDiagnose: (cid: string, btn: HTMLElement) => void) {
+  if(!data?.items?.length){target.innerHTML='<div class="placeholder">缺少当日报告或真实日预算，暂不计算消耗速率。</div>';return;}
+  const displayMoney=(v:any)=>money(v,data.currency||"USD");
   const s = data?.summary || {};
   const items = data?.items || [];
   const healthTone = s.firewallHealth === "ALERT" ? "red" : s.firewallHealth === "WATCH" ? "amber" : "teal";
@@ -316,7 +335,7 @@ function renderPacing(target: HTMLElement, data: any, onDiagnose: (cid: string, 
     <div class="firewall-banner firewall-${healthTone}">
       <div>
         <strong>资金防火墙状态：${e(healthText)}</strong>
-        <p class="sub">当前时段日进度 ${e(s.dayProgressPct ?? 0)}% · 全盘今日已消耗 ${e(money(s.totalTodaySpend))} / 日预算 ${e(money(s.totalDailyBudget))}（Pacing ${e(s.overallPacingRatio ?? 1)}×）</p>
+        <p class="sub">当前时段日进度 ${e(s.dayProgressPct ?? 0)}% · 全盘今日已消耗 ${e(displayMoney(s.totalTodaySpend))} / 日预算 ${e(displayMoney(s.totalDailyBudget))}（Pacing ${e(s.overallPacingRatio ?? 1)}×）</p>
       </div>
       <div class="firewall-badges">
         ${toneBadge(`熔断预警 ${numeric(s.lossBreakerCount)}`, s.lossBreakerCount > 0 ? "red" : "gray")}
@@ -330,7 +349,7 @@ function renderPacing(target: HTMLElement, data: any, onDiagnose: (cid: string, 
         const tone = FIREWALL_TONE[it.firewallStatus] || "gray";
         return [
           `<strong>${e(it.name || it.campaignId)}</strong><br><small class="muted">${e(it.platform)} · ROAS ${e(it.roas)}×</small>`,
-          `<span class="mono">${e(money(it.todaySpend))} / ${e(money(it.dailyBudget))}</span><br><small class="muted">余 ${e(money(it.remainingBudget))}</small>`,
+          `<span class="mono">${e(displayMoney(it.todaySpend))} / ${e(displayMoney(it.dailyBudget))}</span><br><small class="muted">余 ${e(displayMoney(it.remainingBudget))}</small>`,
           `<div class="pacing-cell"><progress class="pacing-meter tone-${tone}" max="100" value="${Math.min(100, Math.round(n(it.spendPct)))}"></progress><span class="mono">${e(it.spendPct)}%</span></div>`,
           `<span class="mono">${e(it.pacingRatio)}×</span>`,
           toneBadge(it.firewallLabel || it.firewallStatus, tone),
@@ -733,25 +752,26 @@ const ACTION_TYPE_LABELS: Record<string, string> = {
   PAUSE_CAMPAIGN: "自动暂停活动 (PAUSE)",
   ADJUST_BUDGET: "阶梯递增/降低日预算",
   SWAP_CREATIVE: "下线疲劳素材并切换备用",
-  NOTIFY_ONLY: "发送飞书/钉钉预警"
+  NOTIFY_ONLY: "站内提醒"
 };
 
 export async function renderSmartAutomationRules(container: HTMLElement) {
   async function reload() {
     container.innerHTML = `<div class="placeholder">正在加载无人值守自动化规则中心与执行日志…</div>`;
     try {
-      const [rules, logs] = await Promise.all([
+      const [rules, logs, schedule] = await Promise.all([
         requestList("/cms/agent/overseas/automation/rules"),
-        requestList("/cms/agent/overseas/automation/logs?limit=30")
+        requestList("/cms/agent/overseas/automation/logs?limit=30"),
+        request("/cms/agent/overseas/automation/schedule")
       ]);
       if (!container.isConnected) return;
-      renderContent(rules, logs);
+      renderContent(rules, logs, schedule);
     } catch (err: any) {
       if (container.isConnected) errorIn(container, err?.message || "加载自动化规则失败");
     }
   }
 
-  function renderContent(rules: any[], logs: any[]) {
+  function renderContent(rules: any[], logs: any[], schedule: any) {
     container.innerHTML = `
       <div class="alert-center-head">
         <div>
@@ -759,6 +779,7 @@ export async function renderSmartAutomationRules(container: HTMLElement) {
           <p class="sub">针对出海多时区痛点：空耗自动止损熔断、优质活动阶梯提预算、素材疲劳轮换与海外非高峰出价护栏。</p>
         </div>
         <div class="action-set">
+          <button type="button" class="button secondary" id="auto-rule-new">新建规则</button><button type="button" class="button secondary" id="auto-schedule">${schedule.enabled ? "关闭定时评估" : "开启定时评估（每分钟）"}</button>
           <button type="button" class="button" id="auto-eval-btn">立即执行规则扫描与评估</button>
           <button type="button" class="button secondary" id="auto-clear-logs-btn">清空执行日志</button>
         </div>
@@ -771,7 +792,7 @@ export async function renderSmartAutomationRules(container: HTMLElement) {
             const [typeLabel, typeColor] = RULE_TYPE_META[r.ruleType] || [r.ruleType, "gray"];
             const modeBadge = r.dryRun
               ? toneBadge("仿真试运行 (Dry Run)", "amber")
-              : toneBadge("全自动执行", "teal");
+              : toneBadge("本地执行", "teal");
             const actionLabel = ACTION_TYPE_LABELS[r.actionType] || r.actionType;
 
             return `
@@ -787,14 +808,14 @@ export async function renderSmartAutomationRules(container: HTMLElement) {
                   </div>
                 </div>
                 <div class="auto-rule-desc">
-                  <div><strong>动作：</strong>${e(actionLabel)}</div>
+                  <div><strong>动作：</strong>${e(actionLabel)}</div><button type="button" class="table-link" data-edit-rule="${r.id}">编辑</button> <button type="button" class="table-link" data-delete-rule="${r.id}">删除</button>
                   <div style="margin-top:3px"><strong>触发条件：</strong><code class="mono">${e(r.conditionJson)}</code></div>
                 </div>
                 <div class="auto-rule-actions">
                   <span class="secondary-text">已触发 <strong>${r.triggerCount || 0}</strong> 次 · ${r.lastTriggeredAt ? e(r.lastTriggeredAt.substring(5, 16)) : "尚未触发"}</span>
                   <div class="action-set">
                     <button type="button" class="button secondary small" data-toggle-dryrun="${r.id}" data-current="${r.dryRun}">
-                      ${r.dryRun ? "切为自动执行" : "切为仿真试运行"}
+                      ${r.dryRun ? "切为本地执行" : "切为仿真试运行"}
                     </button>
                   </div>
                 </div>
@@ -831,6 +852,10 @@ export async function renderSmartAutomationRules(container: HTMLElement) {
       </div>
     `;
 
+    $("#auto-rule-new", container).onclick = () => openAutomationRule(null,reload);
+    $("#auto-schedule", container).onclick = ev => busy(ev.currentTarget as HTMLButtonElement,async()=>{await request("/cms/agent/overseas/automation/schedule",{body:{enabled:!schedule.enabled}});reload();});
+    container.querySelectorAll<HTMLButtonElement>("[data-edit-rule]").forEach(btn=>btn.onclick=()=>openAutomationRule(rules.find(r=>r.id===Number(btn.dataset.editRule)),reload));
+    container.querySelectorAll<HTMLButtonElement>("[data-delete-rule]").forEach(btn=>btn.onclick=()=>busy(btn,async()=>{await request(`/cms/agent/overseas/automation/rules/${btn.dataset.deleteRule}/delete`,{body:{}});reload();}));
     $("#auto-eval-btn", container).onclick = (ev) => {
       busy(ev.currentTarget as HTMLButtonElement, async () => {
         const res = await request("/cms/agent/overseas/automation/evaluate", { body: {} });
@@ -867,7 +892,7 @@ export async function renderSmartAutomationRules(container: HTMLElement) {
                 enabled: rule.enabled
               }
             });
-            toast(`已更新规则运行模式为：${!currentDryRun ? "仿真试运行" : "全自动执行"}`);
+            toast(`已更新规则运行模式为：${!currentDryRun ? "仿真试运行" : "本地执行"}`);
             reload();
           }
         });

@@ -10,10 +10,46 @@ import org.springframework.web.bind.annotation.*;
 class AdOverseasOpsController {
 
     private final AdOverseasOpsService service;
+    private final OverseasDataService observations;
+    private final OverseasEvidenceService evidence;
 
-    AdOverseasOpsController(AdOverseasOpsService service) {
+    AdOverseasOpsController(AdOverseasOpsService service, OverseasDataService observations, OverseasEvidenceService evidence) {
         this.service = service;
+        this.observations = observations;
+        this.evidence = evidence;
     }
+
+    @com.afs.controller.filter.RootAuth
+    @PostMapping("/observations/{kind}")
+    Map<String,Object> importObservations(@PathVariable String kind,@RequestBody com.fasterxml.jackson.databind.JsonNode rows) {return evidence.importRows(kind,rows);}
+
+    @GetMapping("/accounts")
+    List<Map<String,Object>> accounts(@RequestParam(defaultValue="USD") String currency){return evidence.accounts(currency);}
+
+    @GetMapping("/landing")
+    Map<String,Object> landing(){return evidence.landing();}
+
+    @GetMapping("/experiments")
+    List<Map<String,Object>> experiments(){return evidence.experiments();}
+
+    @com.afs.controller.filter.RootAuth
+    @PostMapping("/cohort/import")
+    Map<String,Object> importCohorts(@RequestBody com.fasterxml.jackson.databind.JsonNode rows) {
+        return observations.importCohorts(rows);
+    }
+
+    @com.afs.controller.filter.RootAuth
+    @PostMapping("/currencies")
+    Map<String,Object> saveRates(@RequestBody com.fasterxml.jackson.databind.JsonNode rates) {
+        return observations.saveRates(rates);
+    }
+
+    @GetMapping("/automation/schedule")
+    Map<String,Object> schedule() {return service.schedule(null);}
+
+    @com.afs.controller.filter.RootAuth
+    @PostMapping("/automation/schedule")
+    Map<String,Object> saveSchedule(@RequestBody Map<String,Boolean> body) {return service.schedule(Boolean.TRUE.equals(body.get("enabled")));}
 
     // =========================================================================
     // Currencies
@@ -33,6 +69,7 @@ class AdOverseasOpsController {
         return service.listLocalizationDrafts();
     }
 
+    @com.afs.controller.filter.RootAuth
     @PostMapping("/localization/generate")
     Map<String, Object> generateLocalization(@RequestBody LocalizationGenPayload body,
                                              @RequestHeader(value = "x-user-name", required = false) String headerUser,
@@ -43,6 +80,7 @@ class AdOverseasOpsController {
                 actor(principal, headerUser));
     }
 
+    @com.afs.controller.filter.RootAuth
     @PostMapping("/localization/audit")
     Map<String, Object> auditPolicyCompliance(@RequestBody AuditPayload body,
                                               @RequestHeader(value = "x-user-name", required = false) String headerUser,
@@ -52,6 +90,7 @@ class AdOverseasOpsController {
                 actor(principal, headerUser));
     }
 
+    @com.afs.controller.filter.RootAuth
     @PostMapping("/localization/drafts/{id}/status")
     Map<String, Object> updateLocalizationStatus(@PathVariable long id,
                                                  @RequestBody StatusPayload body,
@@ -80,6 +119,7 @@ class AdOverseasOpsController {
         return service.listAutomationRules();
     }
 
+    @com.afs.controller.filter.RootAuth
     @PostMapping("/automation/rules")
     Map<String, Object> saveAutomationRule(@RequestBody AutomationRulePayload body,
                                            @RequestHeader(value = "x-user-name", required = false) String headerUser,
@@ -90,11 +130,13 @@ class AdOverseasOpsController {
                 body.dryRun(), body.enabled(), actor(principal, headerUser));
     }
 
+    @com.afs.controller.filter.RootAuth
     @PostMapping("/automation/rules/{id}/delete")
     Map<String, Object> deleteAutomationRule(@PathVariable long id) {
         return service.deleteAutomationRule(id);
     }
 
+    @com.afs.controller.filter.RootAuth
     @PostMapping("/automation/evaluate")
     Map<String, Object> evaluateAutomationRules(@RequestHeader(value = "x-user-name", required = false) String headerUser,
                                                 Principal principal) {
@@ -106,12 +148,14 @@ class AdOverseasOpsController {
         return service.listAutomationLogs(limit == null ? 30 : limit);
     }
 
+    @com.afs.controller.filter.RootAuth
     @PostMapping("/automation/logs/clear")
     Map<String, Object> clearAutomationLogs() {
         return service.clearAutomationLogs();
     }
 
     private static String actor(Principal principal, String headerUser) {
+        if (com.afs.controller.filter.KiwiContext.getContext() != null) return com.afs.controller.filter.KiwiContext.getUser().getName();
         if (principal != null && principal.getName() != null && !principal.getName().isBlank()) {
             return principal.getName();
         }

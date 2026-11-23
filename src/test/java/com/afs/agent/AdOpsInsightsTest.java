@@ -62,12 +62,8 @@ class AdOpsInsightsTest {
         assertThat(scanResp.statusCode()).isEqualTo(200);
         JsonNode scan = json.readTree(scanResp.body());
         assertThat(scan.path("scannedRules").asInt()).isGreaterThanOrEqualTo(5);
-        assertThat(scan.path("events").size()).isGreaterThan(0);
-
-        long firstEventId = scan.path("events").get(0).path("id").asLong();
-        var ackResp = post("/cms/agent/ops/alerts/events/" + firstEventId + "/ack", "{\"status\":\"RESOLVED\"}");
-        assertThat(ackResp.statusCode()).isEqualTo(200);
-        assertThat(json.readTree(ackResp.body()).path("status").asText()).isEqualTo("RESOLVED");
+        // Historical scenarios have no current-day observations: no fabricated alerts.
+        assertThat(scan.path("events").size()).isZero();
 
         // 4. 7x24 Dayparting schedule save & 168-bit validation
         var dpListResp = get("/cms/agent/ops/dayparting");
@@ -166,18 +162,14 @@ class AdOpsInsightsTest {
         assertThat(currResp.statusCode()).isEqualTo(200);
         JsonNode curr = json.readTree(currResp.body());
         assertThat(curr.path("rates").path("USD").asDouble()).isEqualTo(1.0);
-        assertThat(curr.path("rates").path("CNY").asDouble()).isGreaterThan(7.0);
+        assertThat(curr.path("rates").has("CNY")).isFalse();
         assertThat(curr.path("symbols").path("EUR").asText()).isEqualTo("€");
 
-        // 2. Multilingual DCO generation & Policy compliance radar
+        // Missing AI config must not fabricate localized copy.
         var genResp = post("/cms/agent/overseas/localization/generate", """
                 {"campaignId":"demo-1","topic":"Solar Power Battery","targetCountry":"DE","targetLanguage":"de-DE","platform":"Google"}
                 """);
-        assertThat(genResp.statusCode()).isEqualTo(200);
-        JsonNode genNode = json.readTree(genResp.body());
-        assertThat(genNode.path("count").asInt()).isEqualTo(3);
-        assertThat(genNode.path("country").asText()).isEqualTo("DE");
-        assertThat(genNode.path("drafts").get(0).path("complianceScore").asInt()).isGreaterThanOrEqualTo(60);
+        assertThat(genResp.statusCode()).isEqualTo(400);
 
         // 3. Policy compliance radar audit on clean vs violating copy
         var cleanAudit = post("/cms/agent/overseas/localization/audit", """
@@ -199,9 +191,9 @@ class AdOpsInsightsTest {
         var cohortResp = get("/cms/agent/overseas/cohort?days=14&currency=USD");
         assertThat(cohortResp.statusCode()).isEqualTo(200);
         JsonNode cohortNode = json.readTree(cohortResp.body());
-        assertThat(cohortNode.path("cohorts").size()).isEqualTo(14);
-        assertThat(cohortNode.path("summary").path("avgPaybackDays").asDouble()).isGreaterThan(0.0);
-        assertThat(cohortNode.path("summary").path("ltvCacRatio").asDouble()).isGreaterThan(1.0);
+        assertThat(cohortNode.path("cohorts").size()).isZero();
+        assertThat(cohortNode.path("summary").path("avgPaybackDays").isNull()).isTrue();
+        assertThat(cohortNode.path("summary").path("ltvCacRatio").isNull()).isTrue();
         assertThat(cohortNode.path("summary").path("narrative").asText()).contains("Cohort");
 
         // 5. Autonomous smart automation rules CRUD & evaluation

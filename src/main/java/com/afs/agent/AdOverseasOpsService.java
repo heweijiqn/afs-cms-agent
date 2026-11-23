@@ -27,29 +27,14 @@ import org.springframework.web.server.ResponseStatusException;
  * 1. Multilingual DCO copywriting & Cross-border Policy Compliance Radar
  * 2. Overseas Cohort Retention & D0-D30 Payback/LTV Analyzer
  * 3. Autonomous Unattended Smart Rules Engine (Stop-loss, Scale-up, Fatigue Rotation, Off-peak Saver)
- * 4. Multi-currency real-time exchange rate engine (USD, CNY, EUR, GBP, JPY)
+ * 4. Dated user-supplied multi-currency exchange rates (USD, CNY, EUR, GBP, JPY)
  */
 @Service
 class AdOverseasOpsService {
 
     private static final Logger log = LoggerFactory.getLogger(AdOverseasOpsService.class);
 
-    private static final Map<String, Double> EXCHANGE_RATES = Map.of(
-            "USD", 1.0,
-            "CNY", 7.24,
-            "EUR", 0.92,
-            "GBP", 0.79,
-            "JPY", 154.50
-    );
-
-    private static final Map<String, String> CURRENCY_SYMBOLS = Map.of(
-            "USD", "$",
-            "CNY", "¥",
-            "EUR", "€",
-            "GBP", "£",
-            "JPY", "¥"
-    );
-
+    private final OverseasDataService observations;
     private final JdbcTemplate db;
     private final ObjectMapper json;
     private final CmsCampaignDataService cmsData;
@@ -59,7 +44,8 @@ class AdOverseasOpsService {
     AdOverseasOpsService(JdbcTemplate db, ObjectMapper json,
                          CmsCampaignDataService cmsData,
                          AiModelGateway gateway,
-                         AgentTelemetryService telemetry) {
+                         AgentTelemetryService telemetry, OverseasDataService observations) {
+        this.observations = observations;
         this.db = db;
         this.json = json;
         this.cmsData = cmsData;
@@ -71,26 +57,14 @@ class AdOverseasOpsService {
     // 1. Currency Exchange Rate Utilities
     // =========================================================================
 
-    Map<String, Object> getSupportedCurrencies() {
-        return Map.of(
-                "rates", EXCHANGE_RATES,
-                "symbols", CURRENCY_SYMBOLS,
-                "baseCurrency", "USD"
-        );
-    }
-
-    BigDecimal convertFromUsd(BigDecimal usdAmount, String targetCurrency) {
-        if (usdAmount == null) return BigDecimal.ZERO;
-        String cur = targetCurrency == null ? "USD" : targetCurrency.trim().toUpperCase(Locale.ROOT);
-        double rate = EXCHANGE_RATES.getOrDefault(cur, 1.0);
-        return usdAmount.multiply(BigDecimal.valueOf(rate)).setScale(2, RoundingMode.HALF_UP);
-    }
+    Map<String,Object> getSupportedCurrencies() { return observations.currencies(); }
 
     // =========================================================================
     // 2. Multilingual DCO & Policy Compliance Radar
     // =========================================================================
 
-    Map<String, Object> generateLocalizedCreatives(String campaignId, String topic, String targetCountry,
+    @org.springframework.transaction.annotation.Transactional
+    public Map<String, Object> generateLocalizedCreatives(String campaignId, String topic, String targetCountry,
                                                   String targetLanguage, String platform, String actor) {
         String country = (targetCountry == null || targetCountry.isBlank()) ? "US" : targetCountry.strip().toUpperCase(Locale.ROOT);
         String lang = (targetLanguage == null || targetLanguage.isBlank()) ? "en-US" : targetLanguage.strip();
@@ -100,7 +74,7 @@ class AdOverseasOpsService {
         List<Map<String, String>> variants = generateLocalizedWithLlm(safeTopic, country, lang, plat);
         boolean aiPowered = !variants.isEmpty();
         if (!aiPowered) {
-            variants = buildLocalizedFallbacks(safeTopic, country, lang, plat);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "AI 未生成可识别的本地化文案，请检查 AI 配置和模型响应");
         }
 
         List<Map<String, Object>> created = new ArrayList<>();
@@ -111,7 +85,7 @@ class AdOverseasOpsService {
             String cta = v.get("cta");
 
             // Automatic policy compliance radar check on each generated draft
-            Map<String, Object> compliance = auditComplianceInternal(headline + " " + body, plat, country);
+            Map<String, Object> compliance = auditComplianceInternal(headline + " " + hook + " " + body + " " + cta, plat, country);
             String compStatus = String.valueOf(compliance.getOrDefault("riskLevel", "COMPLIANT"));
             int compScore = ((Number) compliance.getOrDefault("riskScore", 95)).intValue();
             String riskTagsJson = jsonString(compliance.get("flaggedTokens"));
@@ -149,7 +123,7 @@ class AdOverseasOpsService {
         );
     }
 
-    private long insertLocalizationDraft(String campaignId, String topic, String country, String lang, String platform,
+    private synchronized long insertLocalizationDraft(String campaignId, String topic, String country, String lang, String platform,
                                          String headline, String hook, String body, String cta,
                                          String compStatus, int compScore, String riskTags, String advice, String actor) {
         try {
@@ -161,11 +135,11 @@ class AdOverseasOpsService {
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?)
                     """, campaignId == null ? "" : campaignId, topic, country, lang, platform,
                     headline, hook, body, cta, compStatus, compScore, riskTags, advice, actor);
-            Long id = db.queryForObject("SELECT MAX(id) FROM ad_localization_draft", Long.class);
+            Long id = db.queryForObject("SELECT id FROM ad_localization_draft WHERE created_by=? AND headline=? ORDER BY id DESC LIMIT 1", Long.class, actor, headline);
             return id != null ? id : 1L;
         } catch (Exception ex) {
             log.error("Failed to persist ad_localization_draft: {}", ex.getMessage());
-            return System.currentTimeMillis();
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "本地化草稿保存失败");
         }
     }
 
@@ -193,13 +167,14 @@ class AdOverseasOpsService {
                 
                 目标市场本土化指南：%s
                 渠道格式指南：%s
+                实际输出语言必须以指定的语言代码为准：%s。国家文化指南不能覆盖所选语言。
                 
                 要求：
                 1. 必须使用目标国家的母语原生书写，地道生动，符合当地消费心理，严禁生硬机翻！
                 2. 遵守海外广告合规政策（严禁虚假承诺100%%效果、严禁侵权或冒充官方、严禁绝对化最高级宣称）。
                 3. 必须输出严格的 JSON 数组（不要包含任何 Markdown 标记或多余说明），每个元素包含 4 个字段：
                 [{"headline":"目标母语主标题","hook":"目标母语钩子或卖点","body":"目标母语正文或脚本","cta":"目标母语行动按钮"}]
-                """.formatted(topic, country, lang, formatGuide, langGuide, formatGuide);
+                """.formatted(topic, country, lang, formatGuide, langGuide, formatGuide, lang);
 
         String raw = callLlm("overseas_localization_agent", prompt);
         if (raw == null || raw.isBlank()) return List.of();
@@ -224,71 +199,6 @@ class AdOverseasOpsService {
         }
     }
 
-    private static List<Map<String, String>> buildLocalizedFallbacks(String topic, String country, String lang, String platform) {
-        switch (country) {
-            case "DE":
-                return List.of(
-                        Map.of("headline", topic + " | Geprüfte Qualität & Transparenter Vergleich",
-                                "hook", "Zertifizierte Standards · Bis zu 30% Effizienzsteigerung",
-                                "body", "Entdecken Sie die führende Lösung für " + topic + ". Geprüfte Standards, ohne versteckte Kosten. In nur 2 Minuten online vergleichen und Angebot sichern.",
-                                "cta", "Jetzt vergleichen"),
-                        Map.of("headline", "Warum Profis auf " + topic + " setzen",
-                                "hook", "Verlässliche Ergebnisse · 100% DSGVO-konform",
-                                "body", "Maximale Zuverlässigkeit und transparente Konditionen. Fordern Sie jetzt Ihre persönliche Beratung und Detailauswertung an.",
-                                "cta", "Kostenlos anfragen"),
-                        Map.of("headline", topic + " für anspruchsvolle Anwender",
-                                "hook", "Höchste Präzision · Schnelle Bereitstellung",
-                                "body", "Schluss mit zeitraubenden Insellösungen. Nutzen Sie moderne Qualitätsstandards direkt auf Knopfdruck.",
-                                "cta", "Mehr erfahren")
-                );
-            case "JP":
-                return List.of(
-                        Map.of("headline", "【2026年最新】" + topic + " 失敗しない選び方と徹底比較",
-                                "hook", "ユーザー満足度94% · 導入実績多数",
-                                "body", "「どれを選ぶべきか分からない」悩みを解消。" + topic + "の主要プランをプロが分かりやすく比較。今なら無料診断を受付中。",
-                                "cta", "無料で詳細を見る"),
-                        Map.of("headline", "無駄なコストを削減：" + topic + " の新基準",
-                                "hook", "透明性の高い料金体系 · 手厚いサポート",
-                                "body", "確かな品質と信頼の実績。わずか1分で最適なプランをお見積もりいただけます。安心のサポート体制完備。",
-                                "cta", "今すぐお見積もり"),
-                        Map.of("headline", "【公式】" + topic + " 限定キャンペーン実施中",
-                                "hook", "初めてでも安心 · 丁寧な導入ガイド付き",
-                                "body", "ビジネスの成長を加速させる確かな選択肢。オンラインで簡単申し込み、最短当日スタート。",
-                                "cta", "詳細を確認する")
-                );
-            case "ES", "MX":
-                return List.of(
-                        Map.of("headline", "Solución Inteligente para " + topic + " | Ahorra Tiempo y Dinero",
-                                "hook", "Sin comisiones ocultas · Más de 10,000 usuarios satisfechos",
-                                "body", "¿Buscas la mejor alternativa en " + topic + "? Compara planes transparentes y encuentra la opción perfecta para ti en minutos.",
-                                "cta", "Ver Ofertas Hoy"),
-                        Map.of("headline", "No pagues de más por " + topic + ": Guía Definitiva 2026",
-                                "hook", "Calidad garantizada · Soporte personalizado",
-                                "body", "Descubre cómo optimizar tus resultados sin complicaciones. Regístrate hoy y recibe una evaluación gratuita.",
-                                "cta", "Cotizar Gratis"),
-                        Map.of("headline", "Promoción Especial en " + topic + " ¡Cupos Limitados!",
-                                "hook", "Acceso instantáneo · Resultados comprobados",
-                                "body", "Únete a la nueva generación de soluciones ágiles. Haz clic y comprueba tu elegibilidad en menos de 30 segundos.",
-                                "cta", "Empezar Ahora")
-                );
-            default:
-                return List.of(
-                        Map.of("headline", "Stop Overpaying for " + topic + " · Top Ranked 2026",
-                                "hook", "Transparent Pricing · Fast Online Approval",
-                                "body", "Discover why thousands choose this leading solution for " + topic + ". Compare verified options, zero hidden fees, and lock in your exclusive rate today.",
-                                "cta", "Check Rates Now"),
-                        Map.of("headline", "The Smarter Way to Handle " + topic,
-                                "hook", "Built for Performance · Backed by 24/7 Support",
-                                "body", "Save up to 35% without sacrificing quality. Complete our 30-second assessment to unlock customized packages and instant quotes.",
-                                "cta", "Get Your Free Quote"),
-                        Map.of("headline", "Limited Time Offer: Upgrade Your " + topic + " Today",
-                                "hook", "No Hassle · Instant Online Setup",
-                                "body", "Skip the tedious sales calls. Experience seamless workflow and guaranteed satisfaction with our modern platform.",
-                                "cta", "Claim Special Offer")
-                );
-        }
-    }
-
     // =========================================================================
     // Policy Compliance Radar Audit (Meta / Google / TikTok / FTC)
     // =========================================================================
@@ -298,18 +208,10 @@ class AdOverseasOpsService {
     }
 
     private Map<String, Object> auditComplianceInternal(String text, String platform, String country) {
-        if (text == null || text.isBlank()) {
-            return Map.of(
-                    "riskScore", 100,
-                    "riskLevel", "COMPLIANT",
-                    "flaggedTokens", List.of(),
-                    "policyViolations", List.of(),
-                    "aiRevisionSuggestion", "文案无违规词汇，符合出海主流投放规范。"
-            );
-        }
+        if (text == null || text.isBlank()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请输入待检查文案");
 
         // Try LLM contextual review first
-        Map<String, Object> llmAudit = auditWithLlm(text, platform, country);
+        Map<String, Object> llmAudit = gateway.isConfigured() ? auditWithLlm(text, platform, country) : null;
         if (llmAudit != null && !llmAudit.isEmpty()) {
             return llmAudit;
         }
@@ -350,7 +252,10 @@ class AdOverseasOpsService {
             int end = raw.lastIndexOf('}');
             if (start < 0 || end <= start) return null;
             JsonNode n = json.readTree(raw.substring(start, end + 1));
-            int score = Math.max(0, Math.min(100, n.path("riskScore").asInt(90)));
+            if(!n.isObject() || !n.path("riskScore").isIntegralNumber() || !n.path("flaggedTokens").isArray()
+                || !n.path("policyViolations").isArray() || n.path("aiRevisionSuggestion").asText("").isBlank())return null;
+            int score=n.path("riskScore").asInt();
+            if(score<0||score>100)return null;
             String level = score >= 85 ? "COMPLIANT" : (score >= 60 ? "WARNING" : "VIOLATION");
             List<String> tokens = new ArrayList<>();
             for (JsonNode t : n.path("flaggedTokens")) {
@@ -363,6 +268,8 @@ class AdOverseasOpsService {
             String sugg = n.path("aiRevisionSuggestion").asText("").strip();
 
             Map<String, Object> out = new LinkedHashMap<>();
+            out.put("source", "AI_ASSISTED_REVIEW");
+            out.put("notice", "风险提示仅供人工复核，平台审核结果以平台实际返回为准");
             out.put("riskScore", score);
             out.put("riskLevel", level);
             out.put("flaggedTokens", tokens);
@@ -415,10 +322,12 @@ class AdOverseasOpsService {
         score = Math.max(20, Math.min(100, score));
         String level = score >= 85 ? "COMPLIANT" : (score >= 60 ? "WARNING" : "VIOLATION");
         String suggestion = flagged.isEmpty()
-                ? "文案各项合规指标健康，符合 Meta / Google / TikTok 广告政策规范。"
+                ? "关键词筛查未命中已配置规则；事实、资质、授权和当地政策仍需人工复核。"
                 : "检测到敏感或高危修饰词 [" + String.join(", ", flagged) + "]，建议替换为「经评测高评分」、「透明报价」、「合规保障」，避免因绝对化承诺导致广告被拒登或封户。";
 
         Map<String, Object> out = new LinkedHashMap<>();
+        out.put("source", "KEYWORD_RULES");
+        out.put("notice", "仅完成关键词筛查，不能判断侵权、事实真实性或保证平台过审");
         out.put("riskScore", score);
         out.put("riskLevel", level);
         out.put("flaggedTokens", flagged);
@@ -456,8 +365,7 @@ class AdOverseasOpsService {
                 return m;
             });
         } catch (Exception ex) {
-            log.warn("listLocalizationDrafts error: {}", ex.getMessage());
-            return List.of();
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "读取本地化草稿失败");
         }
     }
 
@@ -502,154 +410,9 @@ class AdOverseasOpsService {
     // 3. Overseas Cohort Retention & D0-D30 Payback/LTV Analyzer
     // =========================================================================
 
-    Map<String, Object> buildCohortAnalysis(String platform, Integer days, String currency) {
-        int lookback = days == null || days <= 0 ? 14 : Math.min(days, 30);
-        String cur = currency == null || currency.isBlank() ? "USD" : currency.trim().toUpperCase(Locale.ROOT);
-        double exRate = EXCHANGE_RATES.getOrDefault(cur, 1.0);
-        String symbol = CURRENCY_SYMBOLS.getOrDefault(cur, "$");
-
-        LocalDate today = LocalDate.now();
-        List<Map<String, Object>> cohortRows = new ArrayList<>();
-
-        double sumSpend = 0.0;
-        long sumAcq = 0L;
-        double sumD0Rev = 0.0;
-        double sumD7Rev = 0.0;
-        double sumD30Rev = 0.0;
-        double sumPaybackDays = 0.0;
-        int recoveredCount = 0;
-
-        List<CmsCampaignDataService.CampaignSummary> activeCamps = cmsData.listCampaigns("", platform, 30);
-
-        for (int i = lookback; i >= 1; i--) {
-            LocalDate cDate = today.minusDays(i);
-            int seed = Math.abs((cDate.toString() + (platform == null ? "ALL" : platform)).hashCode() % 100);
-
-            String platName = (platform != null && !platform.isBlank())
-                    ? platform
-                    : (seed % 3 == 0 ? "Google" : (seed % 3 == 1 ? "Meta" : "TikTok"));
-
-            long acquisitions = 180L + (seed * 14L);
-            double spendUsd = 240.0 + (seed * 18.5);
-            double convertedSpend = spendUsd * exRate;
-
-            // Model realistic overseas cohort recovery trajectory
-            // D0 ROAS starts 0.52 - 0.76 (typical in App/DTC/Games)
-            double d0Roas = round(0.52 + (seed % 15) * 0.016, 2);
-            double d1Roas = round(d0Roas + 0.11 + (seed % 8) * 0.008, 2);
-            double d3Roas = round(d1Roas + 0.16 + (seed % 10) * 0.010, 2);
-            double d7Roas = round(d3Roas + 0.22 + (seed % 12) * 0.012, 2);
-            double d14Roas = round(d7Roas + 0.26 + (seed % 14) * 0.014, 2);
-            double d30Roas = round(d14Roas + 0.32 + (seed % 16) * 0.015, 2);
-
-            // Retention decay curve
-            double d0Ret = 100.0;
-            double d1Ret = round(42.0 + (seed % 10) * 1.2, 1);
-            double d3Ret = round(d1Ret * 0.72, 1);
-            double d7Ret = round(d3Ret * 0.68, 1);
-            double d14Ret = round(d7Ret * 0.74, 1);
-            double d30Ret = round(d14Ret * 0.78, 1);
-
-            // Calculate Payback Period
-            Double paybackDays = null;
-            String breakEvenStatus;
-            if (d7Roas >= 1.0) {
-                // Break-even within 7 days
-                paybackDays = round(3.0 + (1.0 - d3Roas) / Math.max(0.01, (d7Roas - d3Roas)) * 4.0, 1);
-                paybackDays = Math.max(2.5, Math.min(7.0, paybackDays));
-                breakEvenStatus = "RECOVERED";
-                recoveredCount++;
-                sumPaybackDays += paybackDays;
-            } else if (d14Roas >= 1.0) {
-                paybackDays = round(7.0 + (1.0 - d7Roas) / Math.max(0.01, (d14Roas - d7Roas)) * 7.0, 1);
-                paybackDays = Math.max(7.1, Math.min(14.0, paybackDays));
-                breakEvenStatus = "RECOVERED";
-                recoveredCount++;
-                sumPaybackDays += paybackDays;
-            } else if (d30Roas >= 1.0) {
-                paybackDays = round(14.0 + (1.0 - d14Roas) / Math.max(0.01, (d30Roas - d14Roas)) * 16.0, 1);
-                paybackDays = Math.max(14.1, Math.min(30.0, paybackDays));
-                breakEvenStatus = "PROJECTED_RECOVERED";
-                recoveredCount++;
-                sumPaybackDays += paybackDays;
-            } else {
-                breakEvenStatus = "AT_RISK";
-                sumPaybackDays += 35.0;
-            }
-
-            sumSpend += convertedSpend;
-            sumAcq += acquisitions;
-            sumD0Rev += convertedSpend * d0Roas;
-            sumD7Rev += convertedSpend * d7Roas;
-            sumD30Rev += convertedSpend * d30Roas;
-
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("cohortDate", cDate.toString());
-            row.put("platform", platName);
-            row.put("acquisitions", acquisitions);
-            row.put("spend", round(convertedSpend, 2));
-            row.put("currency", cur);
-            row.put("currencySymbol", symbol);
-            row.put("d0Roas", d0Roas);
-            row.put("d1Roas", d1Roas);
-            row.put("d3Roas", d3Roas);
-            row.put("d7Roas", d7Roas);
-            row.put("d14Roas", d14Roas);
-            row.put("d30Roas", d30Roas);
-            row.put("d0Retention", d0Ret);
-            row.put("d1Retention", d1Ret);
-            row.put("d3Retention", d3Ret);
-            row.put("d7Retention", d7Ret);
-            row.put("d14Retention", d14Ret);
-            row.put("d30Retention", d30Ret);
-            row.put("paybackDays", paybackDays);
-            row.put("breakEvenStatus", breakEvenStatus);
-            cohortRows.add(row);
-        }
-
-        double avgCac = sumAcq > 0 ? round(sumSpend / sumAcq, 2) : 0.0;
-        double overallD0Roas = sumSpend > 0 ? round(sumD0Rev / sumSpend, 2) : 0.0;
-        double overallD7Roas = sumSpend > 0 ? round(sumD7Rev / sumSpend, 2) : 0.0;
-        double overallD30Roas = sumSpend > 0 ? round(sumD30Rev / sumSpend, 2) : 0.0;
-        double avgPaybackDays = round(sumPaybackDays / lookback, 1);
-        double ltv30 = sumAcq > 0 ? round(sumD30Rev / sumAcq, 2) : 0.0;
-        double ltv90 = round(ltv30 * 1.38, 2);
-        double ltvCacRatio = avgCac > 0 ? round(ltv30 / avgCac, 2) : 0.0;
-
-        String healthStatus = overallD7Roas >= 1.05 ? "HEALTHY_RECOVERING" : (overallD7Roas >= 0.85 ? "MARGINAL" : "CRITICAL_DEFICIT");
-
-        // AI Diagnostic Narrative
-        String narrative = String.format(Locale.ROOT,
-                "【出海 Cohort 队列回收诊断】整体 D0 首日 ROAS 为 %.2fx，但在 D7 成功爬升至 %.2fx，D30 最终累计达 %.2fx。平均回本周期约 %.1f 天，30日 LTV/CAC 比率为 %.2fx。符合典型出海长线健康回收模型；建议重点保持 Google 与 Meta 稳定放量，切忌因首日账面 ROAS 偏低而盲目误杀潜力长尾活动。",
-                overallD0Roas, overallD7Roas, overallD30Roas, avgPaybackDays, ltvCacRatio);
-
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("lookbackDays", lookback);
-        summary.put("platform", platform == null || platform.isBlank() ? "ALL" : platform);
-        summary.put("currency", cur);
-        summary.put("currencySymbol", symbol);
-        summary.put("totalSpend", round(sumSpend, 2));
-        summary.put("totalAcquisitions", sumAcq);
-        summary.put("avgCac", avgCac);
-        summary.put("avgD0Roas", overallD0Roas);
-        summary.put("avgD7Roas", overallD7Roas);
-        summary.put("avgD30Roas", overallD30Roas);
-        summary.put("avgPaybackDays", avgPaybackDays);
-        summary.put("ltv30", ltv30);
-        summary.put("ltv90", ltv90);
-        summary.put("ltvCacRatio", ltvCacRatio);
-        summary.put("healthStatus", healthStatus);
-        summary.put("narrative", narrative);
-
-        return Map.of(
-                "summary", summary,
-                "cohorts", cohortRows
-        );
+    Map<String,Object> buildCohortAnalysis(String platform,Integer days,String currency) {
+        return observations.cohort(platform,days,currency);
     }
-
-    // =========================================================================
-    // 4. Autonomous Unattended Smart Rules Engine
-    // =========================================================================
 
     List<Map<String, Object>> listAutomationRules() {
         seedStandardRulesIfEmpty();
@@ -683,10 +446,14 @@ class AdOverseasOpsService {
         }
     }
 
-    private void seedStandardRulesIfEmpty() {
+    private synchronized void seedStandardRulesIfEmpty() {
         try {
+            Integer seeded=db.queryForObject("SELECT COUNT(*) FROM local_api_setting WHERE kind='automation' AND site='local' AND name='rules_initialized'",Integer.class);
+            if(seeded!=null&&seeded>0)return;
             Integer count = db.queryForObject("SELECT COUNT(*) FROM ad_smart_automation_rule", Integer.class);
-            if (count != null && count > 0) return;
+            if (count != null && count > 0) {
+                db.update("MERGE INTO local_api_setting(kind,site,name,setting_value) KEY(kind,site,name) VALUES('automation','local','rules_initialized','true')");return;
+            }
 
             db.update("""
                     INSERT INTO ad_smart_automation_rule(name, rule_type, scope_platform, condition_json, action_type, action_params_json, dry_run, enabled, updated_by)
@@ -699,14 +466,15 @@ class AdOverseasOpsService {
                      '{"minRoas":1.30,"minPacingPct":80.0,"budgetDeltaPct":15}',
                      'ADJUST_BUDGET', '{"budgetDeltaPct":15,"maxDailyBudget":600.0}', TRUE, TRUE, 'system'),
                     
-                    ('受众饱和-素材疲劳轮换', 'FATIGUE_ROTATE', 'ALL',
-                     '{"maxFrequency":3.2,"ctrDeclinePct":25.0}',
+                    ('素材点击率衰退提醒', 'FATIGUE_ROTATE', 'ALL',
+                     '{"minImpressions":1000,"ctrDeclinePct":25.0}',
                      'SWAP_CREATIVE', '{"action":"NOTIFY_AND_SWAP_BACKUP"}', TRUE, TRUE, 'system'),
                     
                     ('欧美时差-非高峰节能巡航', 'OFF_PEAK_SAVER', 'ALL',
                      '{"offPeakHours":"01:00-06:00","bidDiscountPct":30}',
                      'ADJUST_BUDGET', '{"bidDiscountPct":30}', TRUE, TRUE, 'system')
                     """);
+            db.update("MERGE INTO local_api_setting(kind,site,name,setting_value) KEY(kind,site,name) VALUES('automation','local','rules_initialized','true')");
         } catch (Exception ex) {
             log.warn("seedStandardRulesIfEmpty failed: {}", ex.getMessage());
         }
@@ -724,6 +492,22 @@ class AdOverseasOpsService {
         boolean safeDryRun = dryRun == null || dryRun;
         boolean safeEnabled = enabled == null || enabled;
 
+        if(!List.of("STOP_LOSS","SCALE_UP","FATIGUE_ROTATE","OFF_PEAK_SAVER").contains(safeType)
+            || !List.of("PAUSE_CAMPAIGN","ADJUST_BUDGET","SWAP_CREATIVE").contains(safeAction))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"不支持的规则或动作");
+        String expected=safeType.equals("STOP_LOSS")?"PAUSE_CAMPAIGN":safeType.equals("FATIGUE_ROTATE")?"SWAP_CREATIVE":"ADJUST_BUDGET";
+        if(!safeAction.equals(expected))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"动作与规则类型不匹配");
+        JsonNode conditions=parseObject(safeCond), parameters=parseObject(safeParams);
+        try {java.time.ZoneId.of(conditions.path("timezone").asText("UTC"));
+            if(safeType.equals("OFF_PEAK_SAVER")){String[] hours=conditions.path("offPeakHours").asText("01:00-06:00").split("-");if(hours.length!=2||hours[0].equals(hours[1]))throw new IllegalArgumentException();java.time.LocalTime.parse(hours[0]);java.time.LocalTime.parse(hours[1]);}
+        }catch(Exception ex){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"时区或低峰时段无效");}
+        for(String key:List.of("minSpend","maxConversions","minRoas","minPacingPct","ctrDeclinePct","minImpressions")) {
+            if(conditions.has(key)&&(!conditions.get(key).isNumber()||conditions.get(key).asDouble()<0||!Double.isFinite(conditions.get(key).asDouble())))
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"规则阈值须为非负数字");
+        }
+        double delta=parameters.path("budgetDeltaPct").asDouble(15),discount=parameters.path("bidDiscountPct").asDouble(30);
+        if(!Double.isFinite(delta)||delta < 0||delta > 50||!Double.isFinite(discount)||discount<0||discount>50||parameters.path("maxDailyBudget").asDouble(600)<=0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"预算调整幅度须在 ±50% 以内，预算上限须大于 0");
         if (id != null && id > 0) {
             db.update("""
                     UPDATE ad_smart_automation_rule
@@ -746,126 +530,99 @@ class AdOverseasOpsService {
         return Map.of("deleted", deleted > 0, "id", id);
     }
 
-    Map<String, Object> evaluateAutomationRules(String actor) {
-        List<Map<String, Object>> rules = listAutomationRules().stream()
-                .filter(r -> Boolean.TRUE.equals(r.get("enabled")))
-                .toList();
+    private final java.util.concurrent.atomic.AtomicBoolean evaluating = new java.util.concurrent.atomic.AtomicBoolean();
 
-        List<CmsCampaignDataService.CampaignSummary> campaigns = cmsData.listCampaigns("", "", 100);
-
-        List<Map<String, Object>> triggeredEvents = new ArrayList<>();
-        int simulatedCount = 0;
-        int executedCount = 0;
-
-        for (Map<String, Object> rule : rules) {
-            long ruleId = ((Number) rule.get("id")).longValue();
-            String ruleName = String.valueOf(rule.get("name"));
-            String ruleType = String.valueOf(rule.get("ruleType"));
-            String scopePlat = String.valueOf(rule.get("scopePlatform"));
-            boolean dryRun = Boolean.TRUE.equals(rule.get("dryRun"));
-            String actionType = String.valueOf(rule.get("actionType"));
-
-            for (CmsCampaignDataService.CampaignSummary c : campaigns) {
-                if (!"ALL".equalsIgnoreCase(scopePlat) && c.platform() != null && !c.platform().equalsIgnoreCase(scopePlat)) {
-                    continue;
-                }
-
-                double spend = c.spend() == null ? 0.0 : c.spend().doubleValue();
-                double roas = c.roas() == null ? 0.0 : c.roas().doubleValue();
-                String cid = c.campaignId();
-                String cname = c.name();
-                String plat = c.platform() == null ? "Google" : c.platform();
-
-                boolean matched = false;
-                String triggerReason = "";
-                String actionDetail = "";
-
-                switch (ruleType) {
-                    case "STOP_LOSS" -> {
-                        // Trigger if spend >= 40 and ROAS < 0.6 or loss
-                        if (spend >= 40.0 && roas < 0.6) {
-                            matched = true;
-                            triggerReason = String.format("消耗达 $%.2f 且 ROAS 仅 %.2fx（严重亏损空耗）", spend, roas);
-                            actionDetail = dryRun ? "【试运行】拟自动暂停该活动 (PAUSE)" : "【已执行】已自动暂停活动并触发风控熔断";
+    Map<String,Object> evaluateAutomationRules(String actor) {
+        if(!evaluating.compareAndSet(false,true)) throw new ResponseStatusException(HttpStatus.CONFLICT,"规则评估正在运行");
+        try {
+            return new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(db.getDataSource())).execute(transaction -> {
+            List<Map<String,Object>> events=new ArrayList<>();
+            List<Map<String,Object>> rules=listAutomationRules().stream().filter(r->Boolean.TRUE.equals(r.get("enabled"))).toList();
+            int simulated=0,executed=0,skipped=0;
+            for(var rule:rules) {
+                JsonNode cond=parseObject(String.valueOf(rule.get("conditionJson")));
+                JsonNode params=parseObject(String.valueOf(rule.get("actionParamsJson")));
+                String platform=String.valueOf(rule.get("scopePlatform")), type=String.valueOf(rule.get("ruleType")), action=String.valueOf(rule.get("actionType"));
+                var zone=java.time.ZoneId.of(cond.path("timezone").asText("UTC"));
+                var today=LocalDate.now(zone);
+                for(var c:cmsData.listCampaigns("","ALL".equalsIgnoreCase(platform)?"":platform,250)) {
+                    if(!cmsData.hasPlatformObservation(c,today)){skipped++;continue;}
+                    // Day evidence is calendar-day data in the configured report timezone; no invented hourly precision.
+                    var evidence=cmsData.loadCampaignEvidence(c.campaignId(),c.site(),c.channel(),today.minusDays(7),today);
+                    if(evidence==null) {skipped++;continue;}
+                    var current=evidence.daily().stream().filter(d->d.date().equals(today)).findFirst().orElse(null);
+                    if(current==null) {skipped++;continue;}
+                    double spend=current.spend().doubleValue(),revenue=current.revenue().doubleValue();
+                    double roas=spend>0?revenue/spend:0;boolean matched=false; String reason="";
+                    var budgetRows=cmsData.isLocalWorkspace() && "TikTok".equalsIgnoreCase(c.platform())?db.queryForList("SELECT SUM(budget) AS budget FROM tiktok_ad_group_info WHERE ad_resource_id=? AND status=1",c.campaignId()):List.<Map<String,Object>>of();
+                    double budget=budgetRows.isEmpty()?0:OverseasDataService.num(budgetRows.get(0),"budget");
+                    switch(type) {
+                        case "STOP_LOSS" -> { matched=spend>=cond.path("minSpend").asDouble(50)&&current.conversions()<=cond.path("maxConversions").asLong(0);reason="当日花费 "+spend+"，转化 "+current.conversions(); }
+                        case "SCALE_UP" -> {matched=budget>0&&roas>=cond.path("minRoas").asDouble(1.3)&&spend/budget*100>=cond.path("minPacingPct").asDouble(85);reason="当日 ROAS "+roas+"，预算利用率 "+(budget>0?spend/budget*100:0)+"%";}
+                        case "FATIGUE_ROTATE" -> {
+                            long pastImps=evidence.daily().stream().filter(d->d.date().isBefore(today)).mapToLong(CmsReportSource.Day::impressions).sum();
+                            long pastClicks=evidence.daily().stream().filter(d->d.date().isBefore(today)).mapToLong(CmsReportSource.Day::clicks).sum();
+                            double baseline=pastImps>0?(double)pastClicks/pastImps:0,ctr=current.impressions()>0?(double)current.clicks()/current.impressions():0;
+                            matched=baseline>0&&current.impressions()>=cond.path("minImpressions").asInt(1000)&&(baseline-ctr)/baseline*100>=cond.path("ctrDeclinePct").asDouble(25);
+                            reason="当日 CTR "+ctr+"，前 7 日基准 CTR "+baseline+"；缺少独立触达人数，未判断频次";
+                        }
+                        case "OFF_PEAK_SAVER" -> {
+                            String[] times=cond.path("offPeakHours").asText("01:00-06:00").split("-");
+                            var start=java.time.LocalTime.parse(times[0]);var end=java.time.LocalTime.parse(times[1]);var now=java.time.LocalTime.now(zone);
+                            matched=start.isBefore(end)?!now.isBefore(start)&&now.isBefore(end):!now.isBefore(start)||now.isBefore(end);
+                            matched=matched&&budget>0;reason="时区 "+zone+"，低峰时段 "+cond.path("offPeakHours").asText();
                         }
                     }
-                    case "SCALE_UP" -> {
-                        // Trigger if ROAS >= 1.25 and spend >= 20.0
-                        if (spend >= 20.0 && roas >= 1.25) {
-                            matched = true;
-                            triggerReason = String.format("ROAS 达到 %.2fx 且消耗充分（具备优质放量潜力）", roas);
-                            actionDetail = dryRun ? "【试运行】建议递增日预算 +15%" : "【已执行】日预算已自动递增 +15%";
-                        }
+                    if(!matched)continue;
+                    boolean dryRun=Boolean.TRUE.equals(rule.get("dryRun"));
+                    String claim=rule.get("id")+"|"+c.campaignId()+"|"+today+"|"+(dryRun?"DRY":"LOCAL");
+                    try {db.update("INSERT INTO ad_automation_claim(claim_key) VALUES(?)",claim);}catch(org.springframework.dao.DuplicateKeyException duplicate){continue;}
+                    String status="SIMULATED",detail="条件命中，拟执行 "+action;
+                    if(dryRun)simulated++;
+                    else if(!cmsData.isLocalWorkspace()) {status="BLOCKED";detail="仅支持本地工作区执行，未调用广告平台";}
+                    else if(!"TikTok".equalsIgnoreCase(c.platform()) || "SWAP_CREATIVE".equals(action)) {
+                        status="PENDING_MANUAL";detail="请人工复核并在广告平台执行；本地无可更新的对应资产";
+                    } else {
+                        try {
+                            int affected;
+                            if("PAUSE_CAMPAIGN".equals(action)) {
+                                affected=db.update("UPDATE tiktok_ad_group_info SET ad_group_status='DISABLE' WHERE ad_resource_id=? AND status=1 AND ad_group_status<>'DISABLE'",c.campaignId());
+                            } else {
+                                double delta=type.equals("OFF_PEAK_SAVER")?-params.path("bidDiscountPct").asDouble(30):params.path("budgetDeltaPct").asDouble(15);
+                                double cap=delta>0?params.path("maxDailyBudget").asDouble(600):Double.MAX_VALUE;
+                                affected=db.update("UPDATE tiktok_ad_group_info SET budget=LEAST(budget*?,?) WHERE ad_resource_id=? AND status=1 AND (?<=0 OR budget<?)",1+delta/100,cap,c.campaignId(),delta,cap);
+                            }
+                            if(affected>0){status="LOCAL_UPDATED";detail="已更新 "+affected+" 条本地广告组记录，未向广告平台发送请求";executed++;}
+                            else {status="NO_CHANGE";detail="无可更新的本地广告组";}
+                        }catch(Exception ex){status="FAILED";detail="本地更新失败："+ex.getClass().getSimpleName();}
                     }
-                    case "FATIGUE_ROTATE" -> {
-                        if (spend >= 80.0 && roas < 0.9) {
-                            matched = true;
-                            triggerReason = "受众频次饱和，近期点击率衰退 28%（素材严重疲劳）";
-                            actionDetail = dryRun ? "【试运行】建议下线疲劳素材并切换备用 DCO 创意" : "【已执行】已轮换并切换至备用创意";
-                        }
-                    }
-                    case "OFF_PEAK_SAVER" -> {
-                        if (spend >= 50.0 && "TikTok".equalsIgnoreCase(plat)) {
-                            matched = true;
-                            triggerReason = "进入海外夜间低谷期（01:00-06:00），避免无效曝光";
-                            actionDetail = dryRun ? "【试运行】拟调低夜间出价 30%" : "【已执行】夜间出价已下调 30%";
-                        }
-                    }
-                }
-
-                if (matched) {
-                    if (dryRun) simulatedCount++;
-                    else {
-                        executedCount++;
-                        applyRuleActionInWorkspace(cid, actionType);
-                    }
-
-                    // Record execution log
-                    db.update("""
-                            INSERT INTO ad_automation_execution_log(rule_id, rule_name, campaign_id, campaign_name, platform, trigger_reason, action_taken, is_simulated, execution_status)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SUCCESS')
-                            """, ruleId, ruleName, cid, cname, plat, triggerReason, actionDetail, dryRun);
-
-                    // Update trigger counter
-                    db.update("UPDATE ad_smart_automation_rule SET trigger_count = trigger_count + 1, last_triggered_at = CURRENT_TIMESTAMP WHERE id = ?", ruleId);
-
-                    Map<String, Object> evt = new LinkedHashMap<>();
-                    evt.put("ruleId", ruleId);
-                    evt.put("ruleName", ruleName);
-                    evt.put("campaignId", cid);
-                    evt.put("campaignName", cname);
-                    evt.put("platform", plat);
-                    evt.put("triggerReason", triggerReason);
-                    evt.put("actionTaken", actionDetail);
-                    evt.put("isSimulated", dryRun);
-                    triggeredEvents.add(evt);
-
-                    if (triggeredEvents.size() >= 15) break;
+                    db.update("INSERT INTO ad_automation_execution_log(rule_id,rule_name,campaign_id,campaign_name,platform,trigger_reason,action_taken,is_simulated,execution_status) VALUES(?,?,?,?,?,?,?,?,?)",
+                        rule.get("id"),rule.get("name"),c.campaignId(),c.name(),c.platform(),reason,detail,dryRun,status);
+                    db.update("UPDATE ad_smart_automation_rule SET trigger_count=trigger_count+1,last_triggered_at=CURRENT_TIMESTAMP WHERE id=?",rule.get("id"));
+                    events.add(Map.of("campaignId",c.campaignId(),"triggerReason",reason,"actionTaken",detail,"status",status));
                 }
             }
-        }
-
-        return Map.of(
-                "evaluatedRules", rules.size(),
-                "triggeredCount", triggeredEvents.size(),
-                "simulatedCount", simulatedCount,
-                "executedCount", executedCount,
-                "events", triggeredEvents,
-                "logs", listAutomationLogs(20)
-        );
+            return Map.of("evaluatedRules",rules.size(),"triggeredCount",events.size(),"simulatedCount",simulated,"executedCount",executed,"skippedMissingData",skipped,"events",events,"logs",listAutomationLogs(30));
+            });
+        } finally {evaluating.set(false);}
     }
 
-    private void applyRuleActionInWorkspace(String campaignId, String actionType) {
-        if (!cmsData.isLocalWorkspace() || campaignId == null || campaignId.isBlank()) return;
-        try {
-            if ("PAUSE_CAMPAIGN".equalsIgnoreCase(actionType)) {
-                db.update("UPDATE ad_resource SET state = 'REJECT' WHERE ad_resource_id = ?", campaignId);
-            } else if ("ADJUST_BUDGET".equalsIgnoreCase(actionType)) {
-                db.update("UPDATE tiktok_ad_group_info SET budget = budget * 1.15 WHERE ad_resource_id = ?", campaignId);
-            }
-        } catch (Exception ex) {
-            log.warn("Failed to apply rule action to {}: {}", campaignId, ex.getMessage());
-        }
+    @org.springframework.scheduling.annotation.Scheduled(fixedDelay=60000,initialDelay=60000)
+    public void scheduledEvaluation() {
+        var enabled=db.queryForList("SELECT CAST(setting_value AS VARCHAR) AS setting_value FROM local_api_setting WHERE kind='automation' AND site='local' AND name='enabled'");
+        if(enabled.isEmpty()||!"true".equalsIgnoreCase(String.valueOf(enabled.get(0).get("setting_value"))))return;
+        try {evaluateAutomationRules("scheduler");}catch(Exception ex){log.warn("Scheduled rule evaluation failed: {}",ex.getClass().getSimpleName());}
+    }
+
+    Map<String,Object> schedule(Boolean enabled) {
+        if(enabled!=null) db.update("MERGE INTO local_api_setting(kind,site,name,setting_value) KEY(kind,site,name) VALUES('automation','local','enabled',?)",enabled.toString());
+        var rows=db.queryForList("SELECT CAST(setting_value AS VARCHAR) AS enabled FROM local_api_setting WHERE kind='automation' AND site='local' AND name='enabled'");
+        return Map.of("enabled",!rows.isEmpty()&&"true".equalsIgnoreCase(String.valueOf(rows.get(0).get("enabled"))),"intervalSeconds",60);
+    }
+
+    private JsonNode parseObject(String value) {
+        try {var node=json.readTree(value);if(node==null||!node.isObject())throw new IllegalArgumentException();return node;}
+        catch(Exception ex){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"规则条件或动作参数格式无效");}
     }
 
     List<Map<String, Object>> listAutomationLogs(int limit) {
@@ -907,10 +664,11 @@ class AdOverseasOpsService {
     // =========================================================================
 
     private String callLlm(String nodeName, String prompt) {
-        if (!gateway.isConfigured()) return null;
+        if (!gateway.isConfigured()) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请先在渠道密钥页面配置 AI 聊天模型");
         long start = System.currentTimeMillis();
+        AiModelGateway.ResolvedModel resolved=null;
         try {
-            var resolved = gateway.resolve();
+            resolved = gateway.resolve();
             if (resolved == null) return null;
             var call = gateway.chat(resolved, List.of(UserMessage.from(prompt)), List.of());
             long dur = System.currentTimeMillis() - start;
@@ -918,12 +676,13 @@ class AdOverseasOpsService {
             telemetry.recordNode(null, null, "afs_overseas_ops", nodeName, "OK",
                     resolved.chatModel(), call.inputTokens(), call.outputTokens(), 0, dur,
                     text.length() > 160 ? text.substring(0, 160) + "..." : text);
-            return text;
+            return AiModelGateway.redact(resolved,text);
         } catch (Exception ex) {
             long dur = System.currentTimeMillis() - start;
-            telemetry.recordNode(null, null, "afs_overseas_ops", nodeName, "DEGRADED",
-                    "deepseek-flash", 0, 0, 0, dur, "Fallback to deterministic engine: " + ex.getMessage());
-            return null;
+            String detail=AiModelGateway.redact(resolved,AiModelGateway.describe(ex));
+            telemetry.recordNode(null, null, "afs_overseas_ops", nodeName, "FAILED",
+                    resolved==null?"":resolved.chatModel(), 0, 0, 0, dur, detail);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "AI 调用失败：" + detail);
         }
     }
 

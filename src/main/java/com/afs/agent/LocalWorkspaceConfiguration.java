@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Profile;
         AgentSafetyPolicyService.class, OfflineReplayEvaluator.class, FiveAgentOrchestrator.class,
         AdOpsInsightsService.class, AdOpsInsightsController.class,
         AdAgentExtensionsService.class, AdAgentExtensionsController.class,
-        AdOverseasOpsService.class, AdOverseasOpsController.class,
+        AdOverseasOpsService.class, AdOverseasOpsController.class, OverseasDataService.class, OverseasEvidenceService.class,
         AdOptimizationGraph.class, AdOpsCopilotGraph.class,
         OptimizationWorkflow.class, ExperimentAdvisor.class, DiagnosticAgents.class,
         DemoWorkspaceSeed.class, WorkspaceFixtureNames.class, WorkspaceReportIdentifiers.class,
