@@ -244,6 +244,29 @@ try {
   report.cspViolations = report.console.filter(x => /Content Security Policy/.test(x.text)).length;
   check("no CSP violations during walkthrough", report.cspViolations === 0, `${report.cspViolations} inline-style violations`);
 
+  // modal lifecycle: open, scroll lock, native Escape close and cleanup
+  await cdp.eval(`location.hash = '#agent'`);
+  await sleep(1500);
+  const opened = await cdp.eval(`(() => { const b = document.querySelector('#new-analysis'); if (b) b.click(); return !!b; })()`);
+  await sleep(900);
+  const modalOpen = await cdp.eval(`(() => { const m = document.querySelector('#modal'); return {
+    open: !!m?.open, bodyLocked: document.body.classList.contains('modal-open'),
+    title: (document.querySelector('#modal-title')?.textContent || '').trim(),
+    hasForm: !!document.querySelector('#modal form')
+  }; })()`);
+  check("operation modal opens with scroll lock", opened && modalOpen.open && modalOpen.bodyLocked, JSON.stringify(modalOpen));
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+  await sleep(700);
+  const modalClosed = await cdp.eval(`(() => { const m = document.querySelector('#modal'); return {
+    open: !!m?.open, bodyLocked: document.body.classList.contains('modal-open'),
+    contentChildren: document.querySelector('#modal-content')?.children.length || 0,
+    title: (document.querySelector('#modal-title')?.textContent || '').trim()
+  }; })()`);
+  check("modal closes with Escape and releases scroll lock",
+    !modalClosed.open && !modalClosed.bodyLocked && modalClosed.contentChildren === 0,
+    JSON.stringify(modalClosed));
+
   // functional UI action: submit the anomaly scan form
   await cdp.eval(`document.querySelector('[data-agent-tab="scan"]').click()`);
   await sleep(1200);
