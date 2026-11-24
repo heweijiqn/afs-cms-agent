@@ -30,7 +30,7 @@ export async function channelVault(target, context, current) {
     </form><div id="ai-platform-error"></div></section>
     <section class="panel">
     <h2>阿里云 OSS 存储配置</h2>
-    <p class="sub">配置阿里云 OSS 后，素材与文件上传将自动使用 OSS 存储并立即生效（无需重启）；未配置时本地模式默认保存至本机目录。已保存后修改域名或 Bucket 无需重复填写密钥。</p>
+    <p class="sub">配置阿里云 OSS 后，素材与文件上传将自动使用 OSS 存储并立即生效（无需重启）；未配置时默认保存到应用目录。已保存后修改域名或 Bucket 无需重复填写密钥。</p>
     <form id="oss-platform-form" class="form-grid">
       <label>OSS Endpoint<input name="endpoint" required maxlength="2048" placeholder="https://oss-cn-hangzhou.aliyuncs.com"></label>
       <label>Bucket 名称<input name="bucket" required maxlength="200" placeholder="例如 afs-media-prod"></label>

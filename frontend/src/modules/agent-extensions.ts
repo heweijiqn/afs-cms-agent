@@ -543,7 +543,7 @@ async function renderLocalizationAndPolicyRadar(target: HTMLElement, onDiagnose:
       <section class="panel">
         <div class="panel-head">
           <div>
-            <h2>多语言 DCO 本地化文案生成 & 海外政策合规雷达</h2>
+            <h2>多语言 DCO 文案生成 & 海外政策合规雷达</h2>
             <p class="sub">针对出海核心痛点：结合目标市场母语习惯生产高转化文案，并在发布前即时排查 Meta / Google / TikTok / FTC 政策违规风险。</p>
           </div>
         </div>
@@ -577,7 +577,7 @@ async function renderLocalizationAndPolicyRadar(target: HTMLElement, onDiagnose:
                 </select>
               </label>
               <div style="grid-column:1/-1;margin-top:4px">
-                <button type="submit" class="button" id="loc-submit-btn">立即生成本地化高转化创意 (AI驱动)</button>
+                <button type="submit" class="button" id="loc-submit-btn">立即生成多语言高转化创意 (AI驱动)</button>
               </div>
             </form>
           </div>
@@ -597,14 +597,14 @@ async function renderLocalizationAndPolicyRadar(target: HTMLElement, onDiagnose:
         <div class="sub-section" style="margin-top:28px">
           <div class="panel-head">
             <div>
-              <h3>已生成的本地化创意与合规草稿箱（共 ${drafts.length} 条）</h3>
+              <h3>已生成的多语言创意与合规草稿箱（共 ${drafts.length} 条）</h3>
               <p class="sub">支持一键全量入库发布到「内容管理 → 广告文案」，或直接发起双样本 A/B 测试。</p>
             </div>
             <button type="button" class="button secondary small" id="loc-go-adtext">查看内容管理中的广告文案</button>
           </div>
           <div class="creative-draft-grid">
             ${drafts.length === 0
-              ? '<div class="placeholder" style="grid-column:1/-1">暂无本地化创意草稿，请在上方选择目标国家和渠道一键生成。</div>'
+              ? '<div class="placeholder" style="grid-column:1/-1">暂无多语言创意草稿，请在上方选择目标国家和渠道一键生成。</div>'
               : drafts.map(d => {
                   const score = d.complianceScore || 90;
                   const scoreClass = score >= 85 ? "score-green" : score >= 60 ? "score-amber" : "score-red";
@@ -681,7 +681,7 @@ async function renderLocalizationAndPolicyRadar(target: HTMLElement, onDiagnose:
               platform: vals.platform || "Google"
             }
           });
-          toast(`已为 ${vals.targetCountry} 生成 ${res.count || 3} 组地道本地化广告创意`);
+          toast(`已为 ${vals.targetCountry} 生成 ${res.count || 3} 组地道多语言广告创意`);
           renderLocalizationAndPolicyRadar(target, onDiagnose);
         });
       };
@@ -761,7 +761,7 @@ async function renderLocalizationAndPolicyRadar(target: HTMLElement, onDiagnose:
     const goAdTextBtn = $("#loc-go-adtext", target);
     if (goAdTextBtn) goAdTextBtn.onclick = () => openCatalogSection("content", "copy");
   } catch (err: any) {
-    if (target.isConnected) errorIn(target, err?.message || "加载多语言本地化雷达失败");
+    if (target.isConnected) errorIn(target, err?.message || "加载多语言雷达失败");
   }
 }
 

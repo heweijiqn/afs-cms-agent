@@ -793,7 +793,7 @@ export async function renderSmartAutomationRules(container: HTMLElement) {
             const [typeLabel, typeColor] = RULE_TYPE_META[r.ruleType] || [r.ruleType, "gray"];
             const modeBadge = r.dryRun
               ? toneBadge("仿真试运行 (Dry Run)", "amber")
-              : toneBadge("本地执行", "teal");
+              : toneBadge("直接执行", "teal");
             const actionLabel = ACTION_TYPE_LABELS[r.actionType] || r.actionType;
 
             return `
@@ -816,7 +816,7 @@ export async function renderSmartAutomationRules(container: HTMLElement) {
                   <span class="secondary-text">已触发 <strong>${r.triggerCount || 0}</strong> 次 · ${r.lastTriggeredAt ? e(r.lastTriggeredAt.substring(5, 16)) : "尚未触发"}</span>
                   <div class="action-set">
                     <button type="button" class="button secondary small" data-toggle-dryrun="${r.id}" data-current="${r.dryRun}">
-                      ${r.dryRun ? "切为本地执行" : "切为仿真试运行"}
+                      ${r.dryRun ? "切为直接执行" : "切为仿真试运行"}
                     </button>
                   </div>
                 </div>
@@ -893,7 +893,7 @@ export async function renderSmartAutomationRules(container: HTMLElement) {
                 enabled: rule.enabled
               }
             });
-            toast(`已更新规则运行模式为：${!currentDryRun ? "仿真试运行" : "本地执行"}`);
+            toast(`已更新规则运行模式为：${!currentDryRun ? "仿真试运行" : "直接执行"}`);
             reload();
           }
         });

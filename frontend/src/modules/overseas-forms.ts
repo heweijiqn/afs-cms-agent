@@ -57,13 +57,13 @@ const types=[['STOP_LOSS','空耗止损'],['SCALE_UP','达标提预算'],['FATIG
 export function openAutomationRule(rule:any,refresh:()=>void) {
   const c=rule?JSON.parse(rule.conditionJson||'{}'):{};const p=rule?JSON.parse(rule.actionParamsJson||'{}'):{};
   const input=(name:string,title:string,value:any,step='any')=>`<label>${title}<input type="number" name="${name}" value="${e(value)}" min="0" step="${step}" required></label>`;
-  const panel=dialog(rule?'编辑规则':'新建规则',`<p class="sub">按所选报告时区评估当日观测，每条规则对同一活动每天触发一次。本地执行只更新本地 TikTok 广告组；其他平台及素材轮换生成待人工处理记录。</p>
+  const panel=dialog(rule?'编辑规则':'新建规则',`<p class="sub">按所选报告时区评估当日观测，每条规则对同一活动每天触发一次。直接执行只更新 TikTok 广告组；其他平台及素材轮换生成待人工处理记录。</p>
     <form class="form-grid"><label>名称<input name="name" value="${e(rule?.name||'')}" required maxlength="160"></label>
     <label>规则<select name="ruleType">${types.map(([v,t])=>`<option value="${v}" ${rule?.ruleType===v?'selected':''}>${t}</option>`).join('')}</select></label>
     <label>平台<select name="scopePlatform">${['ALL','Google','Facebook','TikTok','Taboola'].map(v=>`<option ${rule?.scopePlatform===v?'selected':''}>${v}</option>`).join('')}</select></label>
     <label>报告时区<select name="timezone">${['UTC','Asia/Shanghai','America/Los_Angeles','America/New_York','Europe/London','Asia/Tokyo'].map(v=>`<option ${c.timezone===v?'selected':''}>${v}</option>`).join('')}</select></label>
     <div class="rule-conditions all form-grid"></div>
-    <label>运行模式<select name="dryRun"><option value="true">仅试算</option><option value="false" ${rule?.dryRun===false?'selected':''}>本地执行</option></select></label>
+    <label>运行模式<select name="dryRun"><option value="true">仅试算</option><option value="false" ${rule?.dryRun===false?'selected':''}>直接执行</option></select></label>
     <label>状态<select name="enabled"><option value="true">启用</option><option value="false" ${rule?.enabled===false?'selected':''}>禁用</option></select></label>
     <div class="rule-error all"></div><button type="submit" class="button">保存规则</button></form>`);
   const form=$('form',panel) as HTMLFormElement;const type=form.elements.namedItem('ruleType') as HTMLSelectElement;
