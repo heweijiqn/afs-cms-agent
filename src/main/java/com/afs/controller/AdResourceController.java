@@ -607,7 +607,7 @@ public class AdResourceController {
         AdResource adResource = adResourceMapper.getByAdResourceId(adResourceId);
         if (StringUtils.isNotBlank(adResource.getAdPlatformInfo())) {
             if (environment.acceptsProfiles(Profiles.of("local-cms"))) {
-                adResourceMapper.updateAdPlatformStateAndMsg("LOCAL_ONLY", "本地活动已保存，平台投放未启用", adResourceId);
+                adResourceMapper.updateAdPlatformStateAndMsg("LOCAL_ONLY", "活动已保存，平台投放未启用", adResourceId);
                 return;
             }
             Map<String, Object> infoMap = JsonUtils.toMap(adResource.getAdPlatformInfo());

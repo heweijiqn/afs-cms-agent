@@ -86,7 +86,7 @@ public final class AdvisoryTools {
     @Tool(name = "creativeAndLandingContext", value = "读取活动关联的落地页文章、关键词、广告素材、广告文案、规则执行日志及站点用户反馈，用于设计精准的创意与落地页实验。")
     public String creativeAndLandingContext() {
         if (cmsData == null) {
-            return "{\"available\":false,\"reason\":\"当前模式未连接本地 CMS 资料库\"}";
+            return "{\"available\":false,\"reason\":\"当前模式未连接 CMS 资料库\"}";
         }
         return write(cmsData.getCampaignDeepProfile(input.campaignId()));
     }

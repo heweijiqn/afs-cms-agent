@@ -322,7 +322,7 @@ for cid, path in [
     ("B11.1", "/api/article/home/list"),
     ("B11.2", "/api/article/search/list?searchKeyword=treadmill"),
     ("B11.3", "/api/category/list"),
-    ("B11.4", "/api/config/get?name=afs-placement-020"),
+    ("B11.4", "/api/config/get?name=placement-020"),
     ("B11.5", "/api/ip/get?ip=203.0.113.77"),
 ]:
     st, body, txt, ms, hs = raw("GET", path, headers={**h_site, "Accept": "application/json"})

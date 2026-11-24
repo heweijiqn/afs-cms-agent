@@ -82,7 +82,7 @@ public class AiImageGenerator {
             }
             throw new IOException(redacted.isBlank() ? "AI 平台返回 HTTP " + status : extractReadableError(redacted));
         }
-        if (payload.length > MAX_IMAGE_RESPONSE) throw new IOException("AI 图片响应超过本地文件大小限制");
+        if (payload.length > MAX_IMAGE_RESPONSE) throw new IOException("AI 图片响应超过文件大小限制");
         var image = json.readTree(payload);
         if (image == null) throw new IOException("AI 平台未返回图片");
         var upstreamError = image.path("error");

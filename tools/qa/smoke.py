@@ -95,7 +95,7 @@ checks = [
     ("GET", "/api/service/health", None),
     ("GET", "/api/article/home/list?site=cccooperate&size=3", None),
     ("GET", "/api/category/list?site=cccooperate", None),
-    ("GET", "/api/config/get?name=afs-placement-020&site=cccooperate", None),
+    ("GET", "/api/config/get?name=placement-020&site=cccooperate", None),
     ("GET", "/api/ip/get?ip=203.0.113.77", None),
     ("POST", "/cms/agent/scan", {"targetRoas": 1.25, "minimumSpend": 30}),
     ("POST", "/cms/agent/replay", {"targetRoas": 1.25, "minimumSpend": 30, "minimumClicks": 30, "maxChangePercent": 10, "limit": 20}),

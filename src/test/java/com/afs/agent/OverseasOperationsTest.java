@@ -124,7 +124,7 @@ class OverseasOperationsTest {
         service.saveAutomationRule(null,"scale","SCALE_UP","ALL","{\"minRoas\":1.3,\"minPacingPct\":85}","ADJUST_BUDGET","{\"budgetDeltaPct\":15,\"maxDailyBudget\":110}",false,true,"test");
         assertThat(service.evaluateAutomationRules("test").get("executedCount")).isEqualTo(1);
         assertThat(db.queryForObject("SELECT budget FROM tiktok_ad_group_info",Double.class)).isEqualTo(110d);
-        assertThat(service.listAutomationLogs(10).get(0).get("executionStatus")).isEqualTo("LOCAL_UPDATED");
+        assertThat(service.listAutomationLogs(10).get(0).get("executionStatus")).isEqualTo("UPDATED");
         service.evaluateAutomationRules("test");
         assertThat(db.queryForObject("SELECT budget FROM tiktok_ad_group_info",Double.class)).isEqualTo(110d);
     }

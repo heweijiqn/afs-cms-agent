@@ -317,7 +317,7 @@ class AdOpsCopilotGraph {
                 > **当前尚未配置 AI 聊天模型**，无法进行大模型深度推理与多轮工具编排。
                 > 请点击左侧导航 **「渠道密钥 → AI 平台」** 填写 Base URL、API Key 和聊天模型后立即生效（无需重启）。
 
-                以下为您从本地数据库实时读取的当前工作区速览：
+                以下是从当前工作区实时读取的速览：
                 - 纳管活动数：**%s**（已绑定预算护栏规则：**%s**）
                 - 累计花费：**$%s** · 累计收入：**$%s** · 累计净利：**$%s** · 综合 ROAS：**%s×**
 
@@ -334,7 +334,7 @@ class AdOpsCopilotGraph {
 
     private String copilotSystemPrompt(String boundCampaignId, String boundRunContext) {
         StringBuilder sb = new StringBuilder("""
-                你是 AFS 商业广告投放智能副驾驶，实时连接本地 CMS 广告投放数据库。
+                你是 AFS 商业广告投放智能副驾驶，实时连接 CMS 广告投放数据。
 
                 你可以调用的实时数据工具：
                 - getPortfolioOverview：查看全盘花费、收入、净利、ROAS 与各平台对比

@@ -179,12 +179,37 @@ class AdOpsInsightsService {
         result.put("platformBreakdown", platformStats);
         result.put("countryBreakdown",byCountry.entrySet().stream().map(entry->{
             var m=new LinkedHashMap<String,Object>();double[] v=entry.getValue();m.put("country",entry.getKey());
-            m.put("regionGroup",java.util.Set.of("US","CA","GB","DE","FR","AU","NZ","JP").contains(entry.getKey().toUpperCase(Locale.ROOT))?"Tier 1（本地分组）":"其他市场");
+            m.put("regionGroup", marketGroup(entry.getKey()));
             m.put("spend",v[0]);m.put("cpc",v[2]>0?v[0]/v[2]:null);m.put("cpm",v[1]>0?v[0]/v[1]*1000:null);return m;
         }).toList());
         result.put("winners", winners.stream().limit(5).toList());
         result.put("bleeders", bleeders.stream().limit(5).toList());
         return result;
+    }
+
+    /**
+     * Real media plans group markets by region and CPM tier, not into a binary
+     * "Tier 1 / everything else". The mapping below follows the usual AFS buying tiers:
+     * Tier 1 English markets, Tier 2 Western Europe / JP-KR, Tier 3 volume markets.
+     */
+    static String marketGroup(String country) {
+        String code = country == null ? "" : country.trim().toUpperCase(Locale.ROOT);
+        String region;
+        int tier;
+        switch (code) {
+            case "US", "CA" -> { region = "北美"; tier = 1; }
+            case "MX" -> { region = "北美"; tier = 2; }
+            case "GB", "IE" -> { region = "欧洲"; tier = 1; }
+            case "DE", "FR", "IT", "ES", "NL", "BE", "AT", "CH", "SE", "NO", "DK", "FI" -> { region = "欧洲"; tier = 2; }
+            case "PL", "CZ", "RO", "HU", "TR", "RU", "UA" -> { region = "欧洲"; tier = 3; }
+            case "AU", "NZ", "SG" -> { region = "亚太"; tier = 1; }
+            case "JP", "KR", "TW", "HK" -> { region = "亚太"; tier = 2; }
+            case "IN", "PH", "ID", "VN", "TH", "MY" -> { region = "亚太"; tier = 3; }
+            case "BR", "AR", "CL", "CO" -> { region = "拉美"; tier = 2; }
+            case "AE", "SA", "ZA" -> { region = "中东非"; tier = 2; }
+            default -> { region = "其他"; tier = 3; }
+        }
+        return region + " · Tier " + tier;
     }
 
     // =========================================================================

@@ -37,7 +37,7 @@ class LegacyContext {
                     WHERE a.ad_resource_id = ? AND r.status = 1
                     """, (row, index) -> row.getDouble(1), campaignId).stream().findFirst()
                     .map(change -> (int) Math.min(20, Math.floor(Math.abs(change)))).orElse(0);
-            return new Snapshot("LOCAL_CMS", channels > 0, rules, cap);
+            return new Snapshot("AFS_CMS", channels > 0, rules, cap);
         }
         boolean channelConfigured = site.equals(channelFixture.path("site").asText())
                 && channel.equals(channelFixture.path("channel").asText());

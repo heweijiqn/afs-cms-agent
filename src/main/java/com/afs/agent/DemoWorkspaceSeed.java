@@ -254,7 +254,7 @@ class DemoWorkspaceSeed implements ApplicationRunner {
         int scenario = campaign.sequence() % 4;
         if (scenario == 0) return;
         var decision = scenario == 1 ? OptimizationController.Decision.REJECTED : OptimizationController.Decision.APPROVED;
-        optimizer.review(run.id(), new OptimizationController.Review(decision, "[演示] 本地测试审批"), () -> "demo-reviewer");
+        optimizer.review(run.id(), new OptimizationController.Review(decision, "投放指标已复核"), () -> "demo-reviewer");
         if (scenario == 3) {
             var budget = money(totals.spend).divide(BigDecimal.valueOf(DAYS), 2, RoundingMode.HALF_UP);
             optimizer.simulate(run.id(), new OptimizationController.SimulationRequest(budget), () -> "demo-operator");

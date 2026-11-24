@@ -333,13 +333,13 @@ class CmsCampaignDataService {
                 LIMIT 1
                 """, campaignId);
         if (rows.isEmpty()) {
-            return Map.of("available", false, "reason", "本地 CMS 数据库中未找到活动：" + campaignId);
+            return Map.of("available", false, "reason", "CMS 数据库中未找到活动：" + campaignId);
         }
         var row = rows.get(0);
         String channel = str(row.get("channel_id"), "");
         String articleId = str(row.get("article_id"), "");
         profile.put("available", true);
-        profile.put("mode", "LOCAL_CMS");
+        profile.put("mode", "AFS_CMS");
         profile.put("campaignId", campaignId);
         profile.put("name", firstNonBlank(str(row.get("campaign"), ""), str(row.get("title"), ""), campaignId));
         profile.put("channel", channel);

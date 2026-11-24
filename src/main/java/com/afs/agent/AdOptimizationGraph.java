@@ -675,7 +675,7 @@ class AdOptimizationGraph {
 
     private String strategySystemPrompt(int limit) {
         return """
-                你是 AFS 商业级广告投放优化智能体（基于 LangGraph4j + LangChain4j），运行在本地 CMS 投放管理系统中。
+                你是 AFS 商业级广告投放优化智能体（基于 LangGraph4j + LangChain4j），运行在 AFS CMS 投放管理系统中。
                 你拥有只读业务工具：dailyReport（逐日趋势）、countryBreakdown（国家/受众盈亏）、creativeAndLandingContext（文章/素材/文案/反馈）、ruleContext（规则上限）、peerBenchmarks（同站点基准）、historicalRuns（历史审批记忆）、simulateBudget（预算试算）、scenarioCatalog（场景目录）。
 
                 工作准则：

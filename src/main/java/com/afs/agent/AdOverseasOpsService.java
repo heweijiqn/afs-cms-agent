@@ -74,7 +74,7 @@ class AdOverseasOpsService {
         List<Map<String, String>> variants = generateLocalizedWithLlm(safeTopic, country, lang, plat);
         boolean aiPowered = !variants.isEmpty();
         if (!aiPowered) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "AI 未生成可识别的本地化文案，请检查 AI 配置和模型响应");
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "AI 未生成可识别的多语言文案，请检查 AI 配置和模型响应");
         }
 
         List<Map<String, Object>> created = new ArrayList<>();
@@ -139,7 +139,7 @@ class AdOverseasOpsService {
             return id != null ? id : 1L;
         } catch (Exception ex) {
             log.error("Failed to persist ad_localization_draft: {}", ex.getMessage());
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "本地化草稿保存失败");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "多语言草稿保存失败");
         }
     }
 
@@ -162,7 +162,7 @@ class AdOverseasOpsService {
             : "Google 搜索/展示广告（高意图主标题、卖点副标题Hook、高转化正文、行动号召CTA）";
 
         String prompt = """
-                你是顶尖的出海广告创意总监与跨国本地化营销专家。
+                你是顶尖的出海广告创意总监与跨国多语言营销专家。
                 请为商品/服务主题「%s」量身打造 3 组针对「%s（%s 语言）」的高转化出海广告创意，发布渠道为「%s」。
                 
                 目标市场本土化指南：%s
@@ -368,7 +368,7 @@ class AdOverseasOpsService {
                 return m;
             });
         } catch (Exception ex) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "读取本地化草稿失败");
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "读取多语言草稿失败");
         }
     }
 
@@ -376,11 +376,11 @@ class AdOverseasOpsService {
         String safe = status == null ? "" : status.strip().toUpperCase(Locale.ROOT);
         if (!List.of("DRAFT", "PUBLISHED", "AB_TESTING", "ARCHIVED").contains(safe)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "不支持的本地化草稿状态：" + status + "，可选 DRAFT/PUBLISHED/AB_TESTING/ARCHIVED");
+                    "不支持的多语言草稿状态：" + status + "，可选 DRAFT/PUBLISHED/AB_TESTING/ARCHIVED");
         }
         int updated = db.update("UPDATE ad_localization_draft SET status = ? WHERE id = ?", safe, id);
         if (updated == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "目标本地化草稿不存在");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "目标多语言草稿不存在");
         }
         if ("PUBLISHED".equals(safe) || "AB_TESTING".equals(safe)) {
             syncLocalizationToAdText();
@@ -599,9 +599,9 @@ class AdOverseasOpsService {
                     try {db.update("INSERT INTO ad_automation_claim(claim_key) VALUES(?)",claim);}catch(org.springframework.dao.DuplicateKeyException duplicate){continue;}
                     String status="SIMULATED",detail="条件命中，拟执行 "+action;
                     if(dryRun)simulated++;
-                    else if(!cmsData.isLocalWorkspace()) {status="BLOCKED";detail="仅支持本地工作区执行，未调用广告平台";}
+                    else if(!cmsData.isLocalWorkspace()) {status="BLOCKED";detail="仅支持工作区执行，未调用广告平台";}
                     else if(!"TikTok".equalsIgnoreCase(c.platform()) || "SWAP_CREATIVE".equals(action)) {
-                        status="PENDING_MANUAL";detail="请人工复核并在广告平台执行；本地无可更新的对应资产";
+                        status="PENDING_MANUAL";detail="请人工复核并在广告平台执行；系统中无可更新的对应资产";
                     } else {
                         try {
                             int affected;
@@ -612,9 +612,9 @@ class AdOverseasOpsService {
                                 double cap=delta>0?params.path("maxDailyBudget").asDouble(600):Double.MAX_VALUE;
                                 affected=db.update("UPDATE tiktok_ad_group_info SET budget=LEAST(budget*?,?) WHERE ad_resource_id=? AND status=1 AND (?<=0 OR budget<?)",1+delta/100,cap,c.campaignId(),delta,cap);
                             }
-                            if(affected>0){status="LOCAL_UPDATED";detail="已更新 "+affected+" 条本地广告组记录，未向广告平台发送请求";executed++;}
-                            else {status="NO_CHANGE";detail="无可更新的本地广告组";}
-                        }catch(Exception ex){status="FAILED";detail="本地更新失败："+ex.getClass().getSimpleName();}
+                            if(affected>0){status="UPDATED";detail="已更新 "+affected+" 条广告组记录，未向广告平台发送请求";executed++;}
+                            else {status="NO_CHANGE";detail="无可更新的广告组";}
+                        }catch(Exception ex){status="FAILED";detail="更新失败："+ex.getClass().getSimpleName();}
                     }
                     db.update("INSERT INTO ad_automation_execution_log(rule_id,rule_name,campaign_id,campaign_name,platform,trigger_reason,action_taken,is_simulated,execution_status) VALUES(?,?,?,?,?,?,?,?,?)",
                         rule.get("id"),rule.get("name"),c.campaignId(),c.name(),c.platform(),reason,detail,dryRun,status);
