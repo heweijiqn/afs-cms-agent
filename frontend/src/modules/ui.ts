@@ -171,29 +171,65 @@ export function toast(message) {
 }
 
 export async function busy(button, action, failure = toast) {
-  if (button.disabled) return;
+  if (!button || button.disabled) return;
+  const label = button.tagName === "BUTTON" ? button.textContent : "";
   button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  if (label) button.textContent = "处理中…";
   try {
     await action();
   } catch (error) {
-    failure(error.message || "请求失败");
+    failure(error?.message || "请求失败");
   } finally {
     button.disabled = false;
+    button.removeAttribute("aria-busy");
+    if (label) button.textContent = label;
   }
 }
 
+// 弹窗打开时锁住背景滚动，关闭后恢复，避免页面在弹窗背后乱跳。
+export function syncModalState() {
+  const node = $("#modal") as HTMLDialogElement | null;
+  if (node?.open) {
+    document.body.classList.add("modal-open");
+    return;
+  }
+  node?.classList.remove("modal-fallback");
+  document.body.classList.remove("modal-open");
+}
+
 export function dialog(title, markup) {
-  const window = $("#modal");
-  $("#modal-title").textContent = title;
+  const window = $("#modal") as HTMLDialogElement | null;
   const content = $("#modal-content");
+  if (!window || !content) return content;
+  $("#modal-title").textContent = title;
   content.innerHTML = markup;
-  if (!window.open) window.showModal();
+  window.scrollTop = 0;
+  content.scrollTop = 0;
+  if (!window.open) {
+    try {
+      window.showModal();
+    } catch {
+      // 兜底：即使 showModal 失败，也以浮层形式展示，绝不把弹窗内容丢进页面流里。
+      window.setAttribute("open", "");
+      window.classList.add("modal-fallback");
+    }
+  }
+  syncModalState();
+  const first = content.querySelector(
+    'input:not([type="hidden"]):not([type="file"]):not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), select:not([disabled]):not([aria-hidden="true"])');
+  if (first) first.focus({ preventScroll: true });
+  window.scrollTop = 0;
   return content;
 }
 
 export function closeDialog() {
-  $("#modal").close();
+  const node = $("#modal") as HTMLDialogElement | null;
+  if (!node) return;
+  if (node.open) node.close();
+  syncModalState();
 }
+
 
 export function formValues(form: HTMLFormElement): Record<string, string> {
   return Object.fromEntries([...new FormData(form)].map(([key, value]) => [key, String(value).trim()]));

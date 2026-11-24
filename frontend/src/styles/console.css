@@ -127,14 +127,22 @@ input[readonly]{background:#edf3f7}
 .error{border:1px solid #f2c9d3;border-radius:9px;color:#913247;background:#fff2f5;padding:11px 14px;font-size:.89rem;margin:12px 0}
 .toast{position:fixed;bottom:24px;right:24px;z-index:4;background:#172e44;color:#fff;border-radius:10px;max-width:min(38rem,92vw);padding:13px 18px;box-shadow:0 10px 30px #172e4455;font-size:.93rem}
 
-dialog{border:1px solid #cad9e6;border-radius:16px;width:min(740px,calc(100% - 36px));max-height:90vh;padding:0;color:var(--deep);box-shadow:0 24px 74px #12263b55}
+body.modal-open{overflow:hidden}
+dialog{border:1px solid #cad9e6;border-radius:16px;width:min(740px,calc(100% - 36px));max-height:min(90vh,calc(100vh - 28px));padding:0;color:var(--deep);box-shadow:0 24px 74px #12263b55;overflow:auto;overscroll-behavior:contain}
 dialog:has(.operation-form),dialog:has(table),dialog:has(pre){width:min(960px,calc(100% - 36px))}
-dialog::backdrop{background:#10213681}
-.modal-body{padding:26px 30px}
-.modal-header{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:18px}
-.modal-header h2{font-size:1.22rem}
+dialog::backdrop{background:#1021367a}
+dialog.modal-fallback{position:fixed;inset:0;margin:auto;z-index:70;display:block;background:#fff}
+.modal-body{padding:0}
+/* 标题栏固定在弹窗顶部：内容再长也能随时关闭，不会「卡住」关不掉。 */
+.modal-header{position:sticky;top:0;z-index:3;display:flex;justify-content:space-between;align-items:center;gap:14px;margin:0;padding:16px 30px 14px;background:#fff;border-bottom:1px solid var(--line)}
+.modal-header h2{font-size:1.22rem;overflow-wrap:anywhere}
+#modal-content{padding:20px 30px 28px}
 .modal-body .sub{margin-bottom:16px}
 .modal-body select[size]{min-height:240px;padding:6px}
+.operation-result:not(:empty){margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+.button[aria-busy="true"],.icon-button[aria-busy="true"]{cursor:progress;opacity:.75}
+.button[aria-busy="true"]::after{content:"";width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:busy-spin .7s linear infinite}
+@keyframes busy-spin{to{transform:rotate(360deg)}}
 pre{overflow:auto;padding:16px;border-radius:10px;background:#eef3f8;font-size:.88rem;line-height:1.58;white-space:pre-wrap;overflow-wrap:anywhere}
 
 /* Catalog, Business Operations & Rule Editor */

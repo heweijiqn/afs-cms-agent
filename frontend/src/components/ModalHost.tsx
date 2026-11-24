@@ -1,7 +1,22 @@
-import React from "react";
-import { closeDialog } from "../modules/ui";
+import React, { useEffect } from "react";
+import { closeDialog, syncModalState } from "../modules/ui";
 
 export const ModalHost: React.FC = () => {
+  useEffect(() => {
+    const modal = document.getElementById("modal") as HTMLDialogElement | null;
+    if (!modal) return;
+    // Esc / 浏览器原生关闭时同步背景滚动锁，并释放上一次的弹窗内容。
+    const onClose = () => {
+      syncModalState();
+      const content = document.getElementById("modal-content");
+      content?.replaceChildren();
+      const title = document.getElementById("modal-title");
+      if (title) title.textContent = "";
+    };
+    modal.addEventListener("close", onClose);
+    return () => modal.removeEventListener("close", onClose);
+  }, []);
+
   return (
     <>
       <dialog id="modal" aria-labelledby="modal-title">

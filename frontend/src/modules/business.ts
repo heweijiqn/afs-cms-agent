@@ -1,5 +1,5 @@
 import { request } from "./api.js";
-import { $, escape as e, busy, dialog, errorIn, pageHead, table, toast, listSearch, wireListSearch,
+import { $, escape as e, busy, closeDialog, dialog, errorIn, pageHead, table, toast, listSearch, wireListSearch,
   metric, numeric, toneBadge, roasBadge, profitDisplay, starRating, exportCsv, ratio, n, defaultDateRange, clampStartToLastDays } from "./ui.js";
 import { operations, localMaintenanceOperations } from "./operation-definitions.js";
 import { setReportChoices, wireReportChoices } from "./report-options.js";
@@ -528,7 +528,17 @@ function renderResult(target, result, preview) {
       display = table(["项目", "内容"], entries.map(([k, v]) => [e(resultFieldLabels[k] || k), e(formatCellValue(v))]));
     }
   }
-  if (!display) display = `<pre>${e(typeof safe === "string" ? safe : JSON.stringify(safe, null, 2))}</pre>`;
+  const isEmpty = safe == null || (Array.isArray(safe) && !safe.length)
+    || (isRecord(safe) && !Object.keys(safe).length);
+  if (!display && isEmpty) {
+    display = '<div class="placeholder">查询完成，暂无返回明细。</div>';
+  } else if (!display) {
+    const json = typeof safe === "string" ? safe : JSON.stringify(safe, null, 2);
+    const shown = json.length > 20000
+      ? `${json.slice(0, 20000)}\n… 结果过长，已截断（共 ${json.length.toLocaleString("zh-CN")} 字符）`
+      : json;
+    display = `<pre>${e(shown)}</pre>`;
+  }
   target.innerHTML = `<div class="sub">${preview ? "模拟参数校验通过，未发送请求。" : "查询完成。"}</div>${display}`;
 }
 
@@ -696,6 +706,15 @@ function platformCampaignFields(platform) {
   }
 }
 
+// 写操作成功后只回一条简洁提示，不再把接口返回的原始 JSON 塞进弹窗。
+function operationSuccessText(action, response) {
+  const detail = response && typeof response === "object" && !Array.isArray(response)
+    ? [response.campaignName, response.campaignId, response.newCampaignId, response.adResourceId, response.name,
+      response.message, response.msg].find(value => typeof value === "string" && value.trim())
+    : "";
+  return detail ? `${action.title}成功：${detail.trim()}` : `${action.title}成功`;
+}
+
 function openOperation(context, action, row, refresh) {
   if (row && action.id === "campaign-info") {
     const identifiers = row.platformCampaign?.id || (row.platformCampaignIds || []).join(" / ");
@@ -792,6 +811,50 @@ function openOperation(context, action, row, refresh) {
       ready.then((fill: any) => typeof fill === "function" ? fill(group) : undefined).catch(failure => errorIn(error, failure.message));
     };
   }
+  // 弹窗被关闭后错误块就不在文档里了，此时改用 toast 反馈，避免信息丢失。
+  const reportFailure = message => {
+    if (error.isConnected) errorIn(error, message);
+    else toast(message);
+  };
+  // 查询类操作把结果留在弹窗里；写操作成功后立即关闭弹窗，让工作区恢复可用。
+  const keepsDialogOpen = isRead || Boolean(action.maintenance) || Boolean(action.reveal)
+    || action.id === "generate-image";
+
+  function paintResponse(response) {
+    if (action.maintenance) {
+      renderMaintenanceResult(output, action, response);
+    } else if (action.id === "article-keywords") {
+      const days = Array.isArray(response) ? response : response?.list || [];
+      output.innerHTML = table(["日期", "关键词", "次数", "占比"], days.flatMap(day => (day.gaDataList || []).map(row =>
+        [e(day.date), e(row.keyword), e(row.count), e(`${Number(row.percent * 100).toFixed(1)}%`)])), "近 15 天暂无关键词记录");
+    } else if (platform) {
+      output.innerHTML = table(["平台", "Campaign ID", "状态"], [[e(response.platform), e(response.campaignId), e(response.status)]]);
+    } else if (action.id === "generate-image" && response?.url &&
+        (/^\/media\/[a-z0-9-]+\.(?:png|jpg|gif|webp)$/i.test(response.url) || /^https:\/\//i.test(response.url))) {
+      const url = e(response.url);
+      output.innerHTML = `<p class="sub"><a href="${url}" target="_blank" rel="noopener noreferrer">打开生成图片</a></p>
+        <img class="generated-image" src="${url}" alt="AI 生成的图片" referrerpolicy="no-referrer">`;
+    } else {
+      renderResult(output, response ?? { message: "成功" }, false);
+    }
+  }
+
+  function revealInitialSecret(response) {
+    output.insertAdjacentHTML("beforeend", `<label>初始签名密钥（关闭窗口后不再显示）
+      <input type="password" readonly autocomplete="off"></label><button class="button secondary small reveal-key" type="button">显示密钥</button>
+      <div class="form-actions"><button class="button" type="button" data-close-reveal>我已保存，关闭</button></div>`);
+    const key = $('input[readonly][type="password"]', output);
+    key.value = response.initialCredential;
+    $(".reveal-key", output).onclick = event => {
+      key.type = key.type === "password" ? "text" : "password";
+      event.currentTarget.textContent = key.type === "password" ? "显示密钥" : "隐藏密钥";
+    };
+    $("[data-close-reveal]", output).onclick = () => closeDialog();
+    $("#modal").addEventListener("close", () => { key.value = ""; }, { once: true });
+    $("button", form).remove();
+    toast(`${action.title}成功，请立即保存初始密钥`);
+  }
+
   form.onsubmit = event => {
     event.preventDefault();
     busy($('button[type="submit"]', form), async () => {
@@ -825,42 +888,31 @@ function openOperation(context, action, row, refresh) {
       }
       const response = await request(path, { body, token });
       if (typeof response === "string" && /失败|错误|无权|^error/i.test(response)) throw new Error(response);
-      if (action.maintenance) {
-        renderMaintenanceResult(output, action, response);
-      } else if (action.id === "article-keywords") {
-        const days = Array.isArray(response) ? response : response?.list || [];
-        output.innerHTML = table(["日期", "关键词", "次数", "占比"], days.flatMap(day => (day.gaDataList || []).map(row =>
-          [e(day.date), e(row.keyword), e(row.count), e(`${Number(row.percent * 100).toFixed(1)}%`)])), "近 15 天暂无关键词记录");
-      } else if (platform) {
-        output.innerHTML = table(["平台", "Campaign ID", "状态"], [[e(response.platform), e(response.campaignId), e(response.status)]]);
-      } else if (action.id === "generate-image" && response?.url &&
-          (/^\/media\/[a-z0-9-]+\.(?:png|jpg|gif|webp)$/i.test(response.url) || /^https:\/\//i.test(response.url))) {
-        const url = e(response.url);
-        output.innerHTML = `<p class="sub"><a href="${url}" target="_blank" rel="noopener noreferrer">打开生成图片</a></p>
-          <img class="generated-image" src="${url}" alt="AI 生成的图片" referrerpolicy="no-referrer">`;
-      } else renderResult(output, response ?? { message: "成功" }, false);
+
       if (action.reveal && response?.initialCredential) {
-        output.insertAdjacentHTML("afterbegin", `<label>初始签名密钥（关闭窗口后不再显示）
-          <input type="password" readonly autocomplete="off"></label><button class="button secondary small reveal-key" type="button">显示密钥</button>`);
-        const key = $("input", output);
-        key.value = response.initialCredential;
-        $(".reveal-key", output).onclick = event => {
-          key.type = key.type === "password" ? "text" : "password";
-          event.currentTarget.textContent = key.type === "password" ? "显示密钥" : "隐藏密钥";
-        };
-        $("#modal").addEventListener("close", () => { key.value = ""; }, { once: true });
-        $("button", form).remove();
+        revealInitialSecret(response);
+        return;
       }
-      if (!isRead) {
-        toast(action.title + "已提交");
-        if (refresh) await refresh();
+      if (keepsDialogOpen) {
+        paintResponse(response);
+        return;
       }
-    }, message => errorIn(error, message));
+      // 写操作：先关闭弹窗，工作区立即恢复可操作，再提示结果并刷新列表。
+      closeDialog();
+      toast(operationSuccessText(action, response));
+      if (refresh) {
+        try {
+          await refresh();
+        } catch (refreshError) {
+          toast(refreshError?.message || "列表刷新失败，请手动刷新页面");
+        }
+      }
+    }, reportFailure);
   };
   if (action.maintenance) wireMaintenanceChoices(form, action).then(() => {
     if (form.isConnected && action.id === "adsense-source-report") form.requestSubmit();
-  }).catch(failure => {
-    if (form.isConnected) errorIn(error, failure.message);
+  }).catch(loadError => {
+    if (form.isConnected) errorIn(error, loadError.message);
   });
   if (row && action.method === "GET" && action.fields.every(field => recordKeys[action.id].includes(field.key))) form.requestSubmit();
 }
