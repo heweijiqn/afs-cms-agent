@@ -141,6 +141,7 @@ Get-CimInstance Win32_Process -Filter "Name='javaw.exe'" |
 - **投放数据不雷同**：每个站点有独立的质量指数（影响 CPM/CTR/CVR 与 ROAS 基线），每个平台各有 CPM/CTR/CPC 基线；日曲线含周内季节性、预算节奏、素材衰减，少数活动带「中途减预算」、掉量日、单日尖峰，约 100 条活动只有 10–12 天数据（中途上线）。
 - **反馈跟随站点市场**：每个站点 2–6 条评价，locale 取自该站点实际投放的市场（`en-IN`、`de-DE` 等），不会给 US-only 站点塞德语评价；重复运行迁移会先按评价正文清理旧种子数据，不会越跑越多。
 - **保留人工数据**：迁移只覆盖种子语料（`article_id LIKE 'afs-article-%' AND partner = 'AFS Media'`），手工新建的活动、文章、素材、规则、用户不会被改写；`channel_credential`、导入的历史归档数据同样保留。
+- **每个渠道都有报表配置**：`RealisticReportConfigs` 会按活动所属文章补齐 `report_data_config`（每个渠道一行，幂等），否则智能体的渠道校验会判定「报表渠道未配置」，把模型建议一律压回 HOLD。
 
 启动后访问控制台：<http://127.0.0.1:9901/console>
 - 默认本地账号：`local-admin`
