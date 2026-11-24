@@ -21,7 +21,7 @@ public interface ReportDataMapper {
     @Insert(" insert into " + Table + " (`channel`, `value`, `desc`, `site`) values (#{channel}, #{value}, #{desc}, #{site})")
     int add(ReportData reportData);
 
-    @Update("update " + Table + " set `channel` = #{channel}, `value` = #{value}, `desc`=#{desc} where `channel` = COALESCE(NULLIF(#{oldChannel}, ''), #{channel}) and site = #{site}")
+    @Update("update " + Table + " set `channel` = #{channel}, `value` = #{value}, `desc`=#{desc} where `channel` = #{oldChannel} and site = #{site}")
     int update(ReportData reportData);
 
     @Select("<script>" +

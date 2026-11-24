@@ -51,7 +51,8 @@ public class ReportDataConfigController {
         info.setValue(body.getValue());
         info.setDesc(body.getDesc());
         info.setChannel(body.getChannel());
-        info.setOldChannel(body.getOldChannel());
+        info.setOldChannel(body.getOldChannel() == null || body.getOldChannel().isBlank()
+                ? body.getChannel() : body.getOldChannel());
         info.setSite(body.getSite());
         return info;
     }
