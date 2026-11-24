@@ -114,6 +114,34 @@ Windows PowerShell 也可直接运行（支持追加 `-SeedDemo` 写入演示数
 .\Run-LocalCms.ps1 -SeedDemo
 ```
 
+不想看到任何黑窗口时，用后台方式启动（`javaw.exe` + 隐藏窗口，进程与终端完全脱钩，日志写入 `./log`）：
+
+```powershell
+# 方式一：双击即可，无需开启脚本执行策略
+Start-LocalCms.vbs
+
+# 方式二：命令行，需要绕过执行策略
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Run-LocalCms.ps1 -Background
+```
+
+后台启动后，`log\start.log` 记录每次启动结果（`STARTED` / `SKIP` / `FAIL`），重复启动会检测 9901 已监听并直接跳过。停止服务：
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='javaw.exe'" |
+    Where-Object { $_.CommandLine -like '*afs-cms.jar*' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+```
+
+本地工作区默认由 `RealisticPlatformDataMigration` 与 `RealisticWorkspaceExpansion` 两个可重复执行的迁移填充，开关是 `afs.workspace.realistic-data`（`local-cms` 配置里打开，测试环境默认关闭，避免污染内存库）：
+
+- **32 个站点 / 640 条活动**：站点标识来自 `SiteController.sites()`，每个站点一个独立垂类（家居健身、智能安防、旅行卡、装修、牙科、保险、隐私安全等），每个垂类 5 个子主题、20 条活动；活动名按账号内序号编号（`TT_US_FoldableTreadmill_RSOC_07`）。
+- **市场按垂类分配，不再全站同款**：高客单服务类（种植牙、保险、法律、养老、装修）只买 US/GB/CA/AU/IE；消费品类加 NZ/SG；内容套利类（生活、清洁、居家安全）才带 IN/PH/ZA 的 Tier-3 量。全库市场分布 US 228 / GB 113 / CA 103 / AU 93 / DE 24 / FR 24 / IE 17 / IN 12 / SG 10 / NZ 7 / PH 6 / ZA 3，CPM 随梯队走（Tier 1 约 8–9，Tier 2 约 5–6，Tier 3 约 2）。
+- **内容不重复且按内容类型分语法**：640 篇文章标题互不相同，四种「波次」对应四种文章形态（原始评测、价格清单、横向对比、90 天复盘）；产品类用「N Picks Under $X / N Models Tested」，服务类用「Real Prices / N Providers Compared」，观点类用「How to Choose / N Approaches」。生成器 `ContentLibrary` 按「对比 / 清单 / 预算 / 实测 / 复盘 / 踩坑 / 区域价格 / 安装」八种编辑角度组织正文，德语、法语站点使用本地语标题与本地语搜索词。
+- **素材与文案像素材库**：素材名是资产编号（`tiktok_gb_streaming-mic-setup_9x16_v4`），时长/体积/尺寸按平台规范；广告文案 2–5 行不等，混合钩子、数据佐证与 CTA。
+- **投放数据不雷同**：每个站点有独立的质量指数（影响 CPM/CTR/CVR 与 ROAS 基线），每个平台各有 CPM/CTR/CPC 基线；日曲线含周内季节性、预算节奏、素材衰减，少数活动带「中途减预算」、掉量日、单日尖峰，约 100 条活动只有 10–12 天数据（中途上线）。
+- **反馈跟随站点市场**：每个站点 2–6 条评价，locale 取自该站点实际投放的市场（`en-IN`、`de-DE` 等），不会给 US-only 站点塞德语评价；重复运行迁移会先按评价正文清理旧种子数据，不会越跑越多。
+- **保留人工数据**：迁移只覆盖种子语料（`article_id LIKE 'afs-article-%' AND partner = 'AFS Media'`），手工新建的活动、文章、素材、规则、用户不会被改写；`channel_credential`、导入的历史归档数据同样保留。
+
 启动后访问控制台：<http://127.0.0.1:9901/console>
 - 默认本地账号：`local-admin`
 - 首次启动会自动生成本地签名密钥文件 `data/local-admin.key`，将其内容粘贴至登录页「CMS 签名密钥」即可登录。

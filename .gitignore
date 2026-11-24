@@ -29,6 +29,7 @@ log/
 /data/imported-business.*
 /data/cms-local.*
 /data/local-admin.key
+/data/backups/
 /data/*.db
 /data/*.key
 /data/media/
