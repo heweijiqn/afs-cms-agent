@@ -50,7 +50,7 @@ class PlatformEconomicsTest {
                     assertThat(creative.dimension()).isEqualTo("1200x628");
                 }
 
-                if (!PlatformEconomics.isRunningActive(slot)) continue;
+                if (!PlatformEconomics.isRunningActive(site, slot)) continue;
 
                 List<PlatformEconomics.DailyRow> rows = PlatformEconomics.generateDailySeries(site, slot, start, 14);
                 assertThat(rows).hasSize(14);

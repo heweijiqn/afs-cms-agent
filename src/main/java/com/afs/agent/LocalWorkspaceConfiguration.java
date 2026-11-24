@@ -18,5 +18,6 @@ import org.springframework.context.annotation.Profile;
         OptimizationWorkflow.class, ExperimentAdvisor.class, DiagnosticAgents.class,
         DemoWorkspaceSeed.class, WorkspaceFixtureNames.class, WorkspaceReportIdentifiers.class,
         RegisteredSiteDefaults.class, WorkspaceCampaignIds.class, WorkspaceSiteBindings.class,
-        WorkspacePlatformIdentifiers.class, RealisticPlatformDataMigration.class, AiImageGenerator.class})
+        WorkspacePlatformIdentifiers.class, RealisticPlatformDataMigration.class,
+        RealisticWorkspaceExpansion.class, AiImageGenerator.class})
 public class LocalWorkspaceConfiguration {}

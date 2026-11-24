@@ -22,6 +22,8 @@ spring:
 env: local
 afs:
   local-workspace: true
+  workspace:
+    realistic-data: true
 
 # AI 智能体使用 OpenAI 兼容 Chat Completions 接口；留空时明确降级为规则建议。
 cms:

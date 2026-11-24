@@ -15,7 +15,8 @@ import java.util.Random;
  * domain catalog and mathematical metrics generator shared by local migrations and demo seeding.
  */
 final class PlatformEconomics {
-    static final int SITE_COUNT = 12;
+    /** Live publisher count: the 12 original verticals plus the 20 second-wave expansions. */
+    static final int SITE_COUNT = 32;
     static final int SLOTS_PER_SITE = 20;
     static final int ACTIVE_DAYS = 14;
     static final String PARTNER = "AFS Media";
@@ -48,29 +49,14 @@ final class PlatformEconomics {
                           BigDecimal suggestedDailyBudget) {}
 
     static final List<OperatorSpec> OPERATORS = List.of(
-            new OperatorSpec("alex.chen", "北美 TikTok 买量负责人", List.of("cccooperate", "askweai", "vvtechai")),
-            new OperatorSpec("sarah.lin", "Meta 信息流增长经理", List.of("superraranker", "magictechai", "bitsxspace")),
-            new OperatorSpec("david.wu", "Google 搜索投放经理", List.of("valibooks", "infozoneai", "buildmindai")),
-            new OperatorSpec("emily.zhao", "Taboola 原生内容优化师", List.of("niceranker", "bestreplyai", "wiseinfoai")),
-            new OperatorSpec("kevin.zhou", "北美高客单垂直投放师", List.of("cccooperate", "valibooks", "vvtechai")),
-            new OperatorSpec("claire.huang", "欧洲德法市场投放专员", List.of("niceranker", "superraranker", "magictechai")),
-            new OperatorSpec("ryan.li", "自动化规则与风控运营", List.of("askweai", "bestreplyai", "infozoneai")),
-            new OperatorSpec("sophia.wang", "创意素材与落地页专家", List.of("wiseinfoai", "buildmindai", "bitsxspace"))
-    );
-
-    static final List<AccountSpec> AD_ACCOUNTS = List.of(
-            new AccountSpec(0, "cccooperate", "TikTok", "TT-US-HealthFitness-01", "7384910284751029001", "alex.chen"),
-            new AccountSpec(1, "niceranker", "Taboola", "TB-Native-SmartHome-01", "1482910401", "emily.zhao"),
-            new AccountSpec(2, "valibooks", "Google", "GG-Search-TravelCard-01", "6428910301", "david.wu"),
-            new AccountSpec(3, "superraranker", "Facebook", "Meta-Tier1-Nutrition-01", "1084927361040001", "sarah.lin"),
-            new AccountSpec(4, "askweai", "TikTok", "TT-Tier1-ErgoOffice-02", "7384910284751029002", "alex.chen"),
-            new AccountSpec(5, "bestreplyai", "Taboola", "TB-Native-SolarPower-02", "1482910402", "emily.zhao"),
-            new AccountSpec(6, "infozoneai", "Google", "GG-Search-HomeStorage-02", "6428910302", "david.wu"),
-            new AccountSpec(7, "magictechai", "Facebook", "Meta-Tier1-OnlineEdu-02", "1084927361040002", "sarah.lin"),
-            new AccountSpec(8, "vvtechai", "TikTok", "TT-US-PersonalFin-03", "7384910284751029003", "kevin.zhou"),
-            new AccountSpec(9, "wiseinfoai", "Taboola", "TB-Native-SolarRebate-03", "1482910403", "claire.huang"),
-            new AccountSpec(10, "buildmindai", "Google", "GG-Search-AutoEV-03", "6428910303", "david.wu"),
-            new AccountSpec(11, "bitsxspace", "Facebook", "Meta-Tier1-DentalCare-03", "1084927361040003", "sarah.lin")
+            new OperatorSpec("alex.chen", "北美 TikTok 买量负责人", List.of("cccooperate", "askweai", "vvtechai", "vitacave", "fitaxon", "roomgic", "beauty-center-nearby", "getburnzy", "gooeco")),
+            new OperatorSpec("sarah.lin", "Meta 信息流增长经理", List.of("superraranker", "magictechai", "bitsxspace", "cureequip", "nearby-dental-implants", "searcheage", "smileclinicguide", "gooeco")),
+            new OperatorSpec("david.wu", "Google 搜索投放经理", List.of("valibooks", "infozoneai", "buildmindai", "bricktowns", "businserve", "widejd", "windyinvest", "insurance-consulting-nearby", "goldenlivingguide")),
+            new OperatorSpec("emily.zhao", "Taboola 原生内容优化师", List.of("niceranker", "bestreplyai", "wiseinfoai", "wisewaysdaily", "homeguarddeals", "mentalsupporthub")),
+            new OperatorSpec("kevin.zhou", "北美高客单垂直投放师", List.of("cccooperate", "valibooks", "vvtechai", "windyinvest", "insurance-consulting-nearby", "goldenlivingguide")),
+            new OperatorSpec("claire.huang", "欧洲德法市场投放专员", List.of("niceranker", "superraranker", "magictechai", "searcheage", "beauty-center-nearby", "wisewaysdaily")),
+            new OperatorSpec("ryan.li", "自动化规则与风控运营", List.of("askweai", "bestreplyai", "infozoneai", "homeguarddeals", "businserve", "widejd")),
+            new OperatorSpec("sophia.wang", "创意素材与落地页专家", List.of("wiseinfoai", "buildmindai", "bitsxspace", "vitacave", "homfixer", "bricktowns"))
     );
 
     static final List<RuleSpec> RULES = List.of(
@@ -100,29 +86,68 @@ final class PlatformEconomics {
                     "CHANGE_BUDGET", "AD_SPEND >= 50 && ROI < 0.95", "DECREASE", 5, 9)
     );
 
-    // Weighted Tier-1/Tier-2 distribution across the 20 slots per site: 7 US, 3 GB, 3 CA, 3 AU, 2 DE, 2 FR.
-    private static final List<CountrySpec> SLOT_COUNTRIES = List.of(
-            new CountrySpec("US", "en", "en-US", 1.24, 1.30, 1.40),
-            new CountrySpec("US", "en", "en-US", 1.24, 1.30, 1.35),
-            new CountrySpec("GB", "en", "en-GB", 0.98, 1.03, 1.05),
-            new CountrySpec("CA", "en", "en-CA", 1.02, 1.07, 1.00),
-            new CountrySpec("AU", "en", "en-AU", 1.06, 1.12, 0.96),
-            new CountrySpec("US", "en", "en-US", 1.24, 1.30, 1.30),
-            new CountrySpec("DE", "de", "de-DE", 0.84, 0.87, 0.88),
-            new CountrySpec("US", "en", "en-US", 1.24, 1.30, 1.28),
-            new CountrySpec("FR", "fr", "fr-FR", 0.78, 0.81, 0.82),
-            new CountrySpec("GB", "en", "en-GB", 0.98, 1.03, 1.02),
-            new CountrySpec("US", "en", "en-US", 1.24, 1.30, 1.32),
-            new CountrySpec("CA", "en", "en-CA", 1.02, 1.07, 0.98),
-            new CountrySpec("AU", "en", "en-AU", 1.06, 1.12, 0.94),
-            new CountrySpec("US", "en", "en-US", 1.24, 1.30, 1.25),
-            new CountrySpec("DE", "de", "de-DE", 0.84, 0.87, 0.85),
-            new CountrySpec("US", "en", "en-US", 1.24, 1.30, 1.35),
-            new CountrySpec("GB", "en", "en-GB", 0.98, 1.03, 1.00),
-            new CountrySpec("CA", "en", "en-CA", 1.02, 1.07, 0.95),
-            new CountrySpec("FR", "fr", "fr-FR", 0.78, 0.81, 0.80),
-            new CountrySpec("AU", "en", "en-AU", 1.06, 1.12, 0.92)
+    /**
+     * Canonical market list. Every publisher draws its 20 campaigns from a weighted subset of
+     * these markets instead of rotating through all of them: a dental-implant advertiser does
+     * not buy Philippine traffic at $0.24 CPC, and a consumer-arbitrage publisher does not build
+     * its whole plan on US inventory.
+     */
+    private static final java.util.Map<String, CountrySpec> MARKETS = java.util.Map.ofEntries(
+            java.util.Map.entry("US", new CountrySpec("US", "en", "en-US", 1.24, 1.30, 1.15)),
+            java.util.Map.entry("GB", new CountrySpec("GB", "en", "en-GB", 0.98, 1.03, 0.92)),
+            java.util.Map.entry("CA", new CountrySpec("CA", "en", "en-CA", 1.02, 1.07, 0.90)),
+            java.util.Map.entry("AU", new CountrySpec("AU", "en", "en-AU", 1.06, 1.12, 0.88)),
+            java.util.Map.entry("NZ", new CountrySpec("NZ", "en", "en-NZ", 0.94, 0.99, 0.72)),
+            java.util.Map.entry("IE", new CountrySpec("IE", "en", "en-IE", 0.96, 1.01, 0.70)),
+            java.util.Map.entry("SG", new CountrySpec("SG", "en", "en-SG", 1.12, 1.18, 0.66)),
+            java.util.Map.entry("DE", new CountrySpec("DE", "de", "de-DE", 0.84, 0.87, 0.85)),
+            java.util.Map.entry("FR", new CountrySpec("FR", "fr", "fr-FR", 0.78, 0.81, 0.80)),
+            java.util.Map.entry("IN", new CountrySpec("IN", "en", "en-IN", 0.52, 0.55, 0.52)),
+            java.util.Map.entry("PH", new CountrySpec("PH", "en", "en-PH", 0.46, 0.49, 0.46)),
+            java.util.Map.entry("ZA", new CountrySpec("ZA", "en", "en-ZA", 0.68, 0.72, 0.60))
     );
+
+    /**
+     * Buying profiles by vertical economics:
+     * <ul>
+     *   <li>{@link MarketProfile#PREMIUM} high-ticket services — almost no Tier-3 inventory.</li>
+     *   <li>{@link MarketProfile#MAINSTREAM} consumer goods — English Tier-1 core plus small EU.</li>
+     *   <li>{@link MarketProfile#VOLUME} content arbitrage — Tier-3 volume carries real weight.</li>
+     *   <li>{@link MarketProfile#EURO} core publishers that also run DE/FR editions.</li>
+     * </ul>
+     */
+    private enum MarketProfile { PREMIUM, MAINSTREAM, VOLUME, EURO }
+
+    private static final java.util.Map<MarketProfile, java.util.Map<String, Integer>> MARKET_MIX =
+            java.util.Map.of(
+                    MarketProfile.PREMIUM, java.util.Map.of(
+                            "US", 8, "GB", 4, "CA", 4, "AU", 3, "IE", 1),
+                    MarketProfile.MAINSTREAM, java.util.Map.of(
+                            "US", 7, "GB", 4, "CA", 3, "AU", 3, "NZ", 1, "IE", 1, "SG", 1),
+                    MarketProfile.VOLUME, java.util.Map.of(
+                            "US", 5, "GB", 3, "CA", 2, "AU", 2, "IN", 4, "PH", 2, "SG", 1, "ZA", 1),
+                    MarketProfile.EURO, java.util.Map.of(
+                            "US", 7, "GB", 3, "CA", 3, "AU", 3, "DE", 2, "FR", 2)
+            );
+
+    /** Vertical slugs that only make commercial sense on high-purchase-power inventory. */
+    private static final java.util.Set<String> PREMIUM_VERTICALS = java.util.Set.of(
+            "travel-cards", "auto-insurance", "online-degrees", "dental-care", "dental-implants",
+            "dental-vision", "senior-living", "insurance-cover", "water-restoration",
+            "home-renovation", "home-services", "solar-power", "solar-rebates", "mental-support",
+            "blood-sugar", "market-intel");
+
+    /** Vertical slugs that live on cheap Tier-3 clicks and high page RPM. */
+    private static final java.util.Set<String> VOLUME_VERTICALS = java.util.Set.of(
+            "everyday-living", "cleaning-home", "home-safety");
+
+    private static MarketProfile profileFor(int siteIndex) {
+        if (siteIndex < PlatformExpansion.FIRST_SITE_INDEX) return MarketProfile.EURO;
+        String slug = vertical(siteIndex).categorySlug();
+        if (PREMIUM_VERTICALS.contains(slug)) return MarketProfile.PREMIUM;
+        if (VOLUME_VERTICALS.contains(slug)) return MarketProfile.VOLUME;
+        return MarketProfile.MAINSTREAM;
+    }
 
     static final List<String> REJECTION_REASONS = List.of(
             "落地页关键词与广告文案相关性不足，需补充产品参数对比模块",
@@ -131,7 +156,7 @@ final class PlatformEconomics {
             "缺少地区合规免责声明与价格参考说明，请完善落地页页脚"
     );
 
-    static final List<VerticalSpec> VERTICALS = List.of(
+    private static final List<VerticalSpec> VERTICALS_CORE = List.of(
             new VerticalSpec(0, "home-fitness", "Home Fitness & Health", "TikTok", 1.05, List.of(
                     sub("FoldableTreadmill", "best foldable treadmill apartment",
                             "Best Foldable Treadmills for Small Apartments (2026 Tested)",
@@ -431,6 +456,7 @@ final class PlatformEconomics {
                             "Schluss mit geschmolzenem Eis: Zwei-Zonen-Kompressorboxen im Vergleich nach Stromverbrauch und Kühlleistung.",
                             "Oubliez la glace fondue : comparatif des glacières 12V double zone par consommation batterie et silence.",
                             List.of("No More Soggy Coolers — Compare 12V Compressor Fridges", "Low Battery Draw & Dual-Zone Freezing Tested for 2026", "Top Portable Car Fridges for Camping & Tailgating"),
+
                             List.of("Nie wieder Eiswürfel kaufen: 12V-Kompressorboxen im Test", "Stromverbrauch an der Powerstation und Kühlleistung geprüft", "Zwei-Zonen-Kühlboxen für Vanlife und Camping 2026"),
                             List.of("Glacières 12V à Compression : Le Comparatif Vanlife 2026", "Faible Consommation Batterie et Double Zone Congélation", "Gardez Vos Aliments Frais Partout Sans Glace")),
                     sub("SolarPanelKit", "foldable 200w solar panel rv camping",
@@ -758,33 +784,171 @@ final class PlatformEconomics {
             ))
     );
 
+    /**
+     * Full 32-publisher catalog: the 12 original verticals plus the 20 second-wave builders.
+     * Declared after {@link #VERTICALS_CORE} so the core list is fully initialised first.
+     */
+    static final List<VerticalSpec> VERTICALS = allVerticals();
+
+    private static List<VerticalSpec> allVerticals() {
+        List<VerticalSpec> all = new java.util.ArrayList<>(VERTICALS_CORE);
+        all.addAll(PlatformExpansion.verticals());
+        return List.copyOf(all);
+    }
+
+    /**
+     * Platform-native ad accounts, one per publisher. Account ids follow each platform's real
+     * identifier shape (19-digit TikTok, 10-digit Google customer id, 10-digit Taboola,
+     * 16-digit Meta) and stay unique across all 32 publishers.
+     */
+    private static final CountrySpec[][] MARKET_PLANS = buildMarketPlans();
+
+    private static CountrySpec[][] buildMarketPlans() {
+        CountrySpec[][] plans = new CountrySpec[SITE_COUNT][SLOTS_PER_SITE];
+        for (int siteIndex = 0; siteIndex < SITE_COUNT; siteIndex++) {
+            MarketProfile profile = profileFor(siteIndex);
+            List<String> codes = new java.util.ArrayList<>(SLOTS_PER_SITE);
+            for (java.util.Map.Entry<String, Integer> entry : MARKET_MIX.get(profile).entrySet()) {
+                for (int i = 0; i < entry.getValue(); i++) codes.add(entry.getKey());
+            }
+            while (codes.size() < SLOTS_PER_SITE) codes.add("US");
+            codes = new java.util.ArrayList<>(codes.subList(0, SLOTS_PER_SITE));
+            // Deterministic shuffle so publishers do not all launch their US wave on the same slots.
+            java.util.Collections.shuffle(codes, new java.util.Random(9_173L + siteIndex * 131L));
+            for (int slot = 0; slot < SLOTS_PER_SITE; slot++) {
+                plans[siteIndex][slot] = MARKETS.get(codes.get(slot));
+            }
+        }
+        return plans;
+    }
+
+    static final List<AccountSpec> AD_ACCOUNTS = accounts();
+
+    private static List<AccountSpec> accounts() {
+        List<AccountSpec> list = new java.util.ArrayList<>(SITE_COUNT);
+        for (int siteIndex = 0; siteIndex < SITE_COUNT; siteIndex++) {
+            String platform = vertical(siteIndex).platform();
+            String site = siteCode(siteIndex);
+            String operator = operatorForSite(siteIndex);
+            String accountId = switch (platform) {
+                case "TikTok" -> Long.toString(7_384_910_284_751_029_001L + siteIndex * 731L);
+                case "Google" -> Long.toString(6_428_910_301L + siteIndex * 97L);
+                case "Taboola" -> Long.toString(1_482_910_401L + siteIndex * 83L);
+                default -> Long.toString(1_084_927_361_040_001L + siteIndex * 617L);
+            };
+            String country = switch (siteIndex % 4) {
+                case 0 -> "US";
+                case 1 -> "GB";
+                case 2 -> "CA";
+                default -> "AU";
+            };
+            String name = "%s-%s-%s-%02d".formatted(platformPrefix(platform), country,
+                    compactCategory(vertical(siteIndex).categoryLabel()), siteIndex + 1);
+            list.add(new AccountSpec(siteIndex, site, platform, name, accountId, operator));
+        }
+        return List.copyOf(list);
+    }
+
+    private static String compactCategory(String label) {
+        StringBuilder out = new StringBuilder();
+        for (String part : label.replace("&", " ").replace("/", " ").split("\\s+")) {
+            if (part.isBlank()) continue;
+            out.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
+        String value = out.toString();
+        return value.length() > 22 ? value.substring(0, 22) : value;
+    }
+
+    private static String operatorForSite(int siteIndex) {
+        String site = siteCode(siteIndex);
+        List<OperatorSpec> eligible = OPERATORS.stream().filter(op -> op.sites().contains(site)).toList();
+        if (!eligible.isEmpty()) return eligible.get(siteIndex % eligible.size()).name();
+        return OPERATORS.get(siteIndex % OPERATORS.size()).name();
+    }
+
+    /**
+     * Reader feedback pool. Deliberately large and mixed by category so the review widget on
+     * one publisher never echoes another: the visible sample is drawn with a per-site offset.
+     */
     private static final List<FeedbackSeed> FEEDBACK_EN = List.of(
             new FeedbackSeed(5, "The side-by-side spec table saved me hours of research before ordering."),
-            new FeedbackSeed(5, "Very clear cost breakdown—appreciated seeing the hidden fees listed upfront."),
+            new FeedbackSeed(5, "Very clear cost breakdown — appreciated seeing the hidden fees listed upfront."),
             new FeedbackSeed(4, "Helpful comparison guide. Would love to see a 6-month follow-up update too."),
             new FeedbackSeed(5, "Checked the rebate section for my state and found an extra $600 credit."),
             new FeedbackSeed(4, "Clean layout on mobile and fast loading without annoying popups."),
             new FeedbackSeed(5, "Finally an article that explains warranty exclusions in plain English."),
             new FeedbackSeed(4, "Good overview of budget vs flagship models; helped narrow it down to two picks."),
             new FeedbackSeed(3, "Solid guide overall, though two of the prices went up slightly this month."),
-            new FeedbackSeed(5, "Shared this checklist with my parents—super easy to read and compare."),
+            new FeedbackSeed(5, "Shared this checklist with my parents — super easy to read and compare."),
             new FeedbackSeed(4, "Clear pros and cons without feeling like a generic sales pitch."),
             new FeedbackSeed(2, "Wish you included more regional providers for smaller rural zip codes."),
-            new FeedbackSeed(5, "Accurate numbers and realistic payback estimates—bookmarked for later.")
+            new FeedbackSeed(5, "Accurate numbers and realistic payback estimates — bookmarked for later."),
+            new FeedbackSeed(5, "The installation notes were the reason I picked one model over the other."),
+            new FeedbackSeed(4, "Appreciated the measured decibel figures instead of the manufacturer claim."),
+            new FeedbackSeed(5, "Called the two shops you listed and both honoured the quoted price."),
+            new FeedbackSeed(3, "Good article, but the sizing table assumes a standard ceiling height."),
+            new FeedbackSeed(4, "The financing comparison saved me about $40 a month on the same unit."),
+            new FeedbackSeed(5, "Straight answer on when to repair and when to replace — rare these days."),
+            new FeedbackSeed(2, "Two of the links pointed to an older model page, please update."),
+            new FeedbackSeed(4, "Useful breakdown of what insurance actually covers here."),
+            new FeedbackSeed(5, "The five-year cost table changed my mind completely, thank you."),
+            new FeedbackSeed(4, "Nice to see a guide that admits the cheap option is sometimes better."),
+            new FeedbackSeed(5, "My electrician confirmed every number in the wiring section."),
+            new FeedbackSeed(3, "Helpful, though I would add a note about permits in smaller towns."),
+            new FeedbackSeed(5, "Read this before a site visit and avoided a $900 upsell."),
+            new FeedbackSeed(4, "The checklist format works well when you are standing in a showroom."),
+            new FeedbackSeed(5, "Followed the setup steps exactly and had it running in 40 minutes."),
+            new FeedbackSeed(4, "Comparison of subscription costs was the part I could not find elsewhere."),
+            new FeedbackSeed(5, "Honest about the downsides, which made the recommendation credible."),
+            new FeedbackSeed(3, "Would like a version focused on renters rather than owners."),
+            new FeedbackSeed(4, "The regional pricing section matched what I was quoted locally."),
+            new FeedbackSeed(5, "Booked two quotes after reading this and saved 18% on the second."),
+            new FeedbackSeed(4, "Good balance of test data and plain-language advice."),
+            new FeedbackSeed(5, "The 90-day update is what convinced me the unit holds up."),
+            new FeedbackSeed(2, "Some figures look like they were measured in a warmer climate than mine."),
+            new FeedbackSeed(4, "Clear explanation of the warranty claim process, step by step."),
+            new FeedbackSeed(5, "Printed the buying checklist and used it in three stores."),
+            new FeedbackSeed(4, "Appreciated the note about which parts are user-replaceable."),
+            new FeedbackSeed(5, "The energy cost estimate was within $3 of my first bill."),
+            new FeedbackSeed(3, "Solid research, but the page could use a short summary at the top.")
     );
 
     private static final List<FeedbackSeed> FEEDBACK_DE = List.of(
             new FeedbackSeed(5, "Sehr übersichtlicher Vergleich, besonders die Hinweise zu den Förderungen 2026."),
             new FeedbackSeed(4, "Verständlich geschrieben und gute Tabelle für den schnellen Preis-Check."),
             new FeedbackSeed(5, "Endlich ein Ratgeber ohne Fachchinesisch — hat mir bei der Auswahl sehr geholfen."),
-            new FeedbackSeed(3, "Gute Übersicht, ich würde mir noch mehr Erfahrungswerte nach einem Jahr wünschen.")
+            new FeedbackSeed(3, "Gute Übersicht, ich würde mir noch mehr Erfahrungswerte nach einem Jahr wünschen."),
+            new FeedbackSeed(5, "Die Montagehinweise waren der Grund, warum ich mich für ein anderes Modell entschieden habe."),
+            new FeedbackSeed(4, "Die gemessenen Dezibel-Werte sind deutlich glaubwürdiger als die Herstellerangaben."),
+            new FeedbackSeed(5, "Preisvergleich inklusive Folgekosten — genau das fehlte mir bisher."),
+            new FeedbackSeed(3, "Guter Artikel, aber die Tabelle geht von einer Standard-Deckenhöhe aus."),
+            new FeedbackSeed(4, "Die Finanzierungsvarianten haben mir etwa 35 € im Monat gespart."),
+            new FeedbackSeed(5, "Klare Antwort auf die Frage, wann Reparatur und wann Neukauf sinnvoll ist."),
+            new FeedbackSeed(2, "Zwei Links führen noch auf die alte Modellseite, bitte aktualisieren."),
+            new FeedbackSeed(4, "Hilfreich, ich hätte mir aber Hinweise zu Genehmigungen in kleineren Gemeinden gewünscht."),
+            new FeedbackSeed(5, "Vor dem Termin gelesen und einen unnötigen Aufpreis vermieden."),
+            new FeedbackSeed(3, "Die Preise in meiner Region weichen um etwa 8 % nach oben ab."),
+            new FeedbackSeed(5, "Die Checkliste funktioniert im Laden wirklich gut."),
+            new FeedbackSeed(4, "Ehrlich bei den Nachteilen — das macht die Empfehlung glaubwürdig.")
     );
 
     private static final List<FeedbackSeed> FEEDBACK_FR = List.of(
             new FeedbackSeed(5, "Comparatif très clair, les tableaux de prix réels évitent les mauvaises surprises."),
             new FeedbackSeed(4, "Guide bien structuré et agréable à lire sur mobile, merci pour les détails sur les aides."),
             new FeedbackSeed(5, "Exactement les informations pratiques que je cherchais avant de demander un devis."),
-            new FeedbackSeed(3, "Article utile, certains tarifs ont légèrement évolué ce trimestre.")
+            new FeedbackSeed(3, "Article utile, certains tarifs ont légèrement évolué ce trimestre."),
+            new FeedbackSeed(5, "Les notes d'installation ont décidé mon choix entre deux modèles."),
+            new FeedbackSeed(4, "Les mesures de bruit en décibels sont bien plus crédibles que les fiches constructeur."),
+            new FeedbackSeed(5, "Le comparatif incluant les frais récurrents manquait partout ailleurs."),
+            new FeedbackSeed(3, "Bon article, mais le tableau suppose une hauteur de plafond standard."),
+            new FeedbackSeed(4, "Les options de financement m'ont fait économiser environ 35 € par mois."),
+            new FeedbackSeed(5, "Réponse claire sur le moment où réparer devient plus cher que remplacer."),
+            new FeedbackSeed(2, "Deux liens renvoient encore à l'ancien modèle, à mettre à jour."),
+            new FeedbackSeed(4, "Utile, j'aurais aimé une section sur les locations plutôt que les propriétaires."),
+            new FeedbackSeed(5, "Lu avant le rendez-vous et évité un supplément inutile."),
+            new FeedbackSeed(3, "Les prix de ma région sont environ 8 % plus élevés que ceux indiqués."),
+            new FeedbackSeed(5, "La checklist fonctionne très bien en magasin."),
+            new FeedbackSeed(4, "Honnête sur les défauts, ce qui rend la recommandation crédible.")
     );
 
     record FeedbackSeed(int rate, String text) {}
@@ -804,7 +968,19 @@ final class PlatformEconomics {
     }
 
     static CountrySpec countryForSlot(int slot) {
-        return SLOT_COUNTRIES.get(slot % SLOT_COUNTRIES.size());
+        return MARKET_PLANS[0][Math.floorMod(slot, SLOTS_PER_SITE)];
+    }
+
+    /** Market for a given publisher slot, taken from that publisher's weighted market plan. */
+    /** Distinct markets a publisher actually buys, in plan order. */
+    static List<String> marketsForSite(int siteIndex) {
+        java.util.LinkedHashSet<String> codes = new java.util.LinkedHashSet<>();
+        for (CountrySpec spec : MARKET_PLANS[Math.floorMod(siteIndex, SITE_COUNT)]) codes.add(spec.code());
+        return List.copyOf(codes);
+    }
+
+    static CountrySpec countryForSiteSlot(int siteIndex, int slot) {
+        return MARKET_PLANS[Math.floorMod(siteIndex, SITE_COUNT)][Math.floorMod(slot, SLOTS_PER_SITE)];
     }
 
     static Subtopic subtopic(int siteIndex, int slot) {
@@ -819,6 +995,19 @@ final class PlatformEconomics {
                 .toList();
         if (eligible.isEmpty()) return OPERATORS.get(siteIndex % OPERATORS.size()).name();
         return eligible.get(slot % eligible.size()).name();
+    }
+
+    /** Stable 0.86-1.12 quality index so publishers do not share one blended ROAS. */
+    private static double publisherIndex(int siteIndex) {
+        double v = Math.sin(siteIndex * 2.399963 + 0.7) * 0.5
+                + Math.sin(siteIndex * 1.117 + 2.1) * 0.3
+                + Math.cos(siteIndex * 0.731 + 1.3) * 0.2;
+        return 0.985 + v * 0.19;
+    }
+
+    /** Per-publisher efficiency multiplier used for CPM/CTR/RPC differences. */
+    static double publisherEfficiency(int siteIndex) {
+        return round4(publisherIndex(siteIndex));
     }
 
     static String platformPrefix(String platform) {
@@ -841,118 +1030,189 @@ final class PlatformEconomics {
         };
     }
 
+    /** Buying intent drives the last segment of a campaign name, the way a real account is built out. */
+    static String campaignIntent(String platform, int slot) {
+        String[] intents = switch (platform) {
+            case "TikTok" -> new String[]{"prosp", "lookalike", "retarget", "creative-test", "spark"};
+            case "Taboola" -> new String[]{"native", "feed", "retarget", "lookalike", "test"};
+            case "Google" -> new String[]{"exact", "phrase", "pmax", "dSA", "brand"};
+            default -> new String[]{"prosp", "lal", "retarget", "adv+", "asc"};
+        };
+        return intents[slot % intents.length];
+    }
+
+    /**
+     * Platform-shaped campaign name: platform, market, subtopic, buying intent and a three-digit
+     * build sequence. The sequence keeps names unique across all 32 publishers while the names
+     * themselves stay readable inside a real ad account.
+     */
     static String campaignName(int siteIndex, int slot) {
         VerticalSpec v = vertical(siteIndex);
         Subtopic s = subtopic(siteIndex, slot);
-        CountrySpec c = countryForSlot(slot);
-        int seq = siteIndex * SLOTS_PER_SITE + slot + 1;
-        return "%s_%s_%s_%s_%03d".formatted(platformPrefix(v.platform()), c.code(), s.slug(),
-                platformObjective(v.platform(), slot), seq);
+        CountrySpec c = countryForSiteSlot(siteIndex, slot);
+        String slug = s.slug();
+        if (slug.length() > 22) slug = slug.substring(0, 22);
+        return "%s_%s_%s_%s_%02d".formatted(platformPrefix(v.platform()), c.code(), slug,
+                campaignIntent(v.platform(), slot), slot + 1);
+    }
+
+    /**
+     * Publishers number campaigns inside their own account, not in one global sequence, so a
+     * 20-campaign account runs 01..20. The guard keeps that readable scheme collision-free
+     * because subtopic slugs are unique per vertical and each vertical owns one publisher.
+     */
+    private static void verifyCampaignNaming() {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (int siteIndex = 0; siteIndex < SITE_COUNT; siteIndex++) {
+            for (int slot = 0; slot < SLOTS_PER_SITE; slot++) {
+                String name = campaignName(siteIndex, slot);
+                if (!names.add(name)) {
+                    throw new IllegalStateException("Duplicate campaign name: " + name);
+                }
+                if (name.length() > 80) {
+                    throw new IllegalStateException("Campaign name too long: " + name);
+                }
+            }
+        }
+    }
+
+    static {
+        verifyCampaignNaming();
     }
 
     static String articleTitle(int siteIndex, int slot) {
+        CountrySpec c = countryForSiteSlot(siteIndex, slot);
+        ContentLibrary.CampaignContent content = contentFor(siteIndex, slot);
+        return content.title();
+    }
+
+    static String articleLead(int siteIndex, int slot) {
+        return contentFor(siteIndex, slot).lead();
+    }
+
+    /** Six-to-seven paragraph, locale-correct article body. No shared boilerplate across sites. */
+    static List<String> articleParagraphs(int siteIndex, int slot) {
+        return contentFor(siteIndex, slot).paragraphs();
+    }
+
+    static List<String> adCopy(int siteIndex, int slot) {
+        return contentFor(siteIndex, slot).adCopy();
+    }
+
+    static String articleKeyword(int siteIndex, int slot) {
         Subtopic s = subtopic(siteIndex, slot);
-        CountrySpec c = countryForSlot(slot);
-        String base = switch (c.lang()) {
+        CountrySpec c = countryForSiteSlot(siteIndex, slot);
+        int seq = siteIndex * SLOTS_PER_SITE + slot;
+        String nativeKeyword = switch (c.lang()) {
+            case "de" -> ContentLibrary.nativeKeyword(s.titleDe(), "de", seq + slot);
+            case "fr" -> ContentLibrary.nativeKeyword(s.titleFr(), "fr", seq + slot);
+            default -> s.keyword();
+        };
+        return ContentLibrary.keywordVariant(s.keyword(), nativeKeyword, c.lang(), slot, seq);
+    }
+
+    /** Content style drives title grammar: products are ranked, services are priced, topics are explained. */
+    static final int STYLE_PRODUCT = 0;
+    static final int STYLE_SERVICE = 1;
+    static final int STYLE_TOPIC = 2;
+
+    private static final java.util.Set<String> TOPIC_VERTICALS = java.util.Set.of(
+            "everyday-living", "mental-support", "privacy-security", "online-degrees",
+            "market-intel", "blood-sugar");
+
+    static int contentStyle(int siteIndex) {
+        String slug = vertical(siteIndex).categorySlug();
+        if (PREMIUM_VERTICALS.contains(slug)) return STYLE_SERVICE;
+        if (TOPIC_VERTICALS.contains(slug)) return STYLE_TOPIC;
+        return STYLE_PRODUCT;
+    }
+
+    static ContentLibrary.CampaignContent contentFor(int siteIndex, int slot) {
+        Subtopic s = subtopic(siteIndex, slot);
+        CountrySpec c = countryForSiteSlot(siteIndex, slot);
+        int sequence = siteIndex * SLOTS_PER_SITE + slot;
+        String localeTitle = switch (c.lang()) {
             case "de" -> s.titleDe();
             case "fr" -> s.titleFr();
             default -> s.titleEn();
         };
-        int wave = slot / 5;
-        if (wave == 0) return base;
-        String suffix = switch (c.lang()) {
-            case "de" -> switch (wave) {
-                case 1 -> " · Preis-Leistungs-Check";
-                case 2 -> " · Kaufberatung";
-                default -> " · Aktuelle Angebote";
-            };
-            case "fr" -> switch (wave) {
-                case 1 -> " · Guide Pratique";
-                case 2 -> " · Meilleurs Choix";
-                default -> " · Offres Actuelles";
-            };
-            default -> switch (wave) {
-                case 1 -> " — Side-by-Side Comparison";
-                case 2 -> " — Buyer's Checklist";
-                default -> " — Budget & Value Picks";
-            };
-        };
-        return base + suffix;
-    }
-
-    static String articleLead(int siteIndex, int slot) {
-        Subtopic s = subtopic(siteIndex, slot);
-        CountrySpec c = countryForSlot(slot);
-        return switch (c.lang()) {
+        String lead = switch (c.lang()) {
             case "de" -> s.leadDe();
             case "fr" -> s.leadFr();
             default -> s.leadEn();
         };
-    }
-
-    static List<String> articleParagraphs(int siteIndex, int slot) {
-        String lead = articleLead(siteIndex, slot);
-        CountrySpec c = countryForSlot(slot);
-        return switch (c.lang()) {
-            case "de" -> List.of(
-                    lead,
-                    "Vergleichen Sie im ersten Schritt laufende Kosten, Garantiebedingungen und echte Nutzerbewertungen für den deutschen Markt.",
-                    "Prüfen Sie vor dem Abschluss immer aktuelle Aktionskonditionen, regionale Zuschüsse und flexible Kündigungsfristen.");
-            case "fr" -> List.of(
-                    lead,
-                    "Comparez d'abord le coût total sur 12 mois, les garanties incluses et les avis vérifiés d'utilisateurs en France.",
-                    "Vérifiez les aides disponibles et demandez deux estimations chiffrées avant de valider votre choix final.");
-            default -> List.of(
-                    lead,
-                    "Start by comparing total 12-month ownership cost, warranty terms, and independent buyer reviews for " + c.code() + " households.",
-                    "Always verify current regional promotions, transparent fee disclosures, and cancellation terms before committing.");
-        };
-    }
-
-    static List<String> adCopy(int siteIndex, int slot) {
-        Subtopic s = subtopic(siteIndex, slot);
-        CountrySpec c = countryForSlot(slot);
-        return switch (c.lang()) {
+        List<String> copy = switch (c.lang()) {
             case "de" -> s.copyDe();
             case "fr" -> s.copyFr();
             default -> s.copyEn();
         };
+        String market = switch (c.lang()) {
+            case "de" -> "Germany";
+            case "fr" -> "France";
+            default -> switch (c.code()) {
+                case "GB" -> "the UK";
+                case "CA" -> "Canada";
+                case "AU" -> "Australia";
+                case "NZ" -> "New Zealand";
+                case "IE" -> "Ireland";
+                case "SG" -> "Singapore";
+                default -> "the US";
+            };
+        };
+        return ContentLibrary.build(siteIndex, slot, siteCode(siteIndex), localeTitle, lead, copy,
+                s.keyword(), c.lang(), market, sequence, contentStyle(siteIndex),
+                vertical(siteIndex).platform());
     }
 
+    /**
+     * Landing pages are short but carry publisher, creative batch and channel so that the URL
+     * looks like a real affiliate deep link instead of a campaign id.
+     */
     static String landingPageUrl(int siteIndex, int slot, String channelId) {
         String site = siteCode(siteIndex);
-        String slug = subtopic(siteIndex, slot).slug()
-                .replaceAll("([a-z])([A-Z])", "$1-$2")
-                .toLowerCase(Locale.ROOT);
         int seq = siteIndex * SLOTS_PER_SITE + slot + 1;
-        // Keep well below taboola_data.landing_url VARCHAR(128) limit and ensure AppUtils.getSite() extracts exact site code.
-        return "https://%s.com/p/%s-%03d?channel=%s".formatted(site, slug, seq, channelId);
+        String batch = Long.toString(((long) siteIndex * 7_919L + slot * 131L) % 9_000L + 1_000L, 36);
+        String creative = Long.toString(((long) slot * 37L + siteIndex * 11L) % 1_296L, 36);
+        return "https://%s.com/p/%s-%s-%03d?channel=%s".formatted(site, batch, creative, seq % 1000, channelId);
     }
 
-    static String campaignState(int slot) {
-        if (slot <= 16) return "PASS";
-        if (slot == 17) return "AUDITING";
-        if (slot == 18) return "REJECT";
+    /**
+     * Real accounts do not carry an identical status mix on every publisher: the number of
+     * live campaigns, the one waiting to be published, the audited and the rejected one all
+     * drift between 12 and 16 active builds here.
+     */
+    static int activeCampaigns(int siteIndex) {
+        return 12 + Math.floorMod(siteIndex * 3, 5);
+    }
+
+    static String campaignState(int siteIndex, int slot) {
+        int active = activeCampaigns(siteIndex);
+        if (slot < active) return "PASS";
+        if (slot == active) return "PASS";
+        if (slot == active + 1) return "AUDITING";
+        if (slot == active + 2) return "REJECT";
         return "ARCHIVE";
     }
 
-    static boolean isRunningActive(int slot) {
-        return slot <= 15;
+    static boolean isRunningActive(int siteIndex, int slot) {
+        return slot < activeCampaigns(siteIndex);
     }
 
-    static boolean isReadyToPublish(int slot) {
-        return slot == 16;
+    static boolean isReadyToPublish(int siteIndex, int slot) {
+        return slot == activeCampaigns(siteIndex);
     }
 
-    static boolean isRuleIntentionallyUnbound(int slot) {
-        // Leave 1 active high-spend campaign per site (12 total) unbound so AI Anomaly Scanner detects RULE_UNBOUND!
-        return slot == 15;
+    static boolean isRuleIntentionallyUnbound(int siteIndex, int slot) {
+        // Leave 1 active high-spend campaign per site unbound so AI Anomaly Scanner detects RULE_UNBOUND.
+        return slot == activeCampaigns(siteIndex) - 1;
     }
 
     static String ruleKeyForCampaign(int siteIndex, int slot) {
-        if (isRuleIntentionallyUnbound(slot) || slot == 17 || slot == 18) return null;
+        if (isRuleIntentionallyUnbound(siteIndex, slot)
+                || isReadyToPublish(siteIndex, slot)
+                || slot >= activeCampaigns(siteIndex) + 1) return null;
         String platform = vertical(siteIndex).platform();
-        int bucket = slot % 4;
+        int bucket = Math.floorMod(slot + siteIndex, 4);
         return switch (platform) {
             case "TikTok" -> switch (bucket) {
                 case 0 -> "tt-scale";
@@ -982,28 +1242,29 @@ final class PlatformEconomics {
 
     static CreativeSpec creativeForCampaign(int siteIndex, int slot) {
         String platform = vertical(siteIndex).platform();
-        int seq = siteIndex * SLOTS_PER_SITE + slot;
+        int seq = siteIndex * SLOTS_PER_PLATFORM_SEED + slot;
         return switch (platform) {
             case "TikTok" -> {
-                String tmpl = switch (slot % 3) {
+                String tmpl = switch (Math.floorMod(slot + siteIndex, 4)) {
                     case 0 -> "tiktok-ugc-hook";
                     case 1 -> "tiktok-split-review";
-                    default -> "tiktok-checklist-reel";
+                    case 2 -> "tiktok-checklist-reel";
+                    default -> "tiktok-problem-solution";
                 };
                 yield new CreativeSpec("VIDEO", "1080x1920", "9:16", 15 + (seq % 16),
                         4_200_000 + (seq % 17) * 480_000, tmpl, "mp4");
             }
             case "Facebook" -> {
-                if (slot % 5 < 2) {
+                if (Math.floorMod(slot + siteIndex, 5) < 2) {
                     yield new CreativeSpec("VIDEO", "1080x1350", "4:5", 14 + (seq % 12),
                             3_100_000 + (seq % 13) * 420_000, "meta-feed-reel", "mp4");
                 }
-                String tmpl = slot % 2 == 0 ? "meta-carousel-card" : "meta-comparison-grid";
+                String tmpl = Math.floorMod(slot + siteIndex, 2) == 0 ? "meta-carousel-card" : "meta-comparison-grid";
                 yield new CreativeSpec("IMAGE", "1080x1080", "1:1", 0,
                         260_000 + (seq % 19) * 21_500, tmpl, "jpg");
             }
             case "Google" -> {
-                boolean square = slot % 3 == 0;
+                boolean square = Math.floorMod(slot + siteIndex, 3) == 0;
                 yield new CreativeSpec("IMAGE", square ? "1200x1200" : "1200x628",
                         square ? "1:1" : "1.91:1", 0,
                         195_000 + (seq % 15) * 18_400,
@@ -1013,6 +1274,8 @@ final class PlatformEconomics {
                     165_000 + (seq % 17) * 14_200, "taboola-editorial-thumb", "jpg");
         };
     }
+
+    private static final int SLOTS_PER_PLATFORM_SEED = 941;
 
     static String materialUrl(int siteIndex, String materialId, CreativeSpec spec) {
         String site = siteCode(siteIndex);
@@ -1035,6 +1298,45 @@ final class PlatformEconomics {
         };
     }
 
+    /** Every seeded review body, used to keep feedback inserts idempotent across migrations. */
+    static java.util.Set<String> feedbackPool() {
+        java.util.Set<String> pool = new java.util.HashSet<>();
+        FEEDBACK_EN.forEach(seed -> pool.add(seed.text()));
+        FEEDBACK_DE.forEach(seed -> pool.add(seed.text()));
+        FEEDBACK_FR.forEach(seed -> pool.add(seed.text()));
+        return pool;
+    }
+
+    /** Publisher-specific feedback so the same sentence is never the first review on 20 sites. */
+    static FeedbackSeed siteFeedback(int siteIndex, String lang, int index) {
+        int offset = Math.floorMod(siteIndex * 3 + index, FEEDBACK_EN.size());
+        List<FeedbackSeed> pool = switch (lang) {
+            case "de" -> FEEDBACK_DE;
+            case "fr" -> FEEDBACK_FR;
+            default -> FEEDBACK_EN;
+        };
+        return pool.get(Math.floorMod(offset, pool.size()));
+    }
+
+    /** Market-level CPM index: Tier-1 English markets carry the highest auction pressure. */
+    private static double countryCpmMult(String code) {
+        return switch (code == null ? "" : code.toUpperCase(Locale.ROOT)) {
+            case "US" -> 1.35;
+            case "GB" -> 1.15;
+            case "CA" -> 1.10;
+            case "AU" -> 1.10;
+            case "NZ" -> 0.95;
+            case "IE" -> 0.95;
+            case "SG" -> 0.92;
+            case "DE" -> 0.92;
+            case "FR" -> 0.86;
+            case "ZA" -> 0.60;
+            case "IN" -> 0.35;
+            case "PH" -> 0.30;
+            default -> 0.85;
+        };
+    }
+
     /**
      * Generates mathematically consistent, platform-authentic 14-day AFS metrics for a single campaign.
      * Guarantees:
@@ -1042,77 +1344,78 @@ final class PlatformEconomics {
      *   <li>{@code ad_impressions >= ad_clicks >= funnel_impressions >= funnel_clicks >= serp_impressions >= afs_clicks}</li>
      *   <li>{@code riskValue = afs_clicks / ad_conversions} in [0.94, 1.09]</li>
      *   <li>Realistic platform CPM / CTR / CPC & realistic portfolio ROAS distribution (0.62x - 1.72x)</li>
-     *   <li>Smooth day-over-day temporal curves with weekday/weekend & creative-fatigue dynamics</li>
+     *   <li>Per-publisher economics (CPM, CTR, conversion rate) plus pacing, weekday and fatigue curves</li>
      * </ul>
      */
     static List<DailyRow> generateDailySeries(int siteIndex, int slot, LocalDate start, int days) {
         VerticalSpec v = vertical(siteIndex);
-        CountrySpec c = countryForSlot(slot);
+        CountrySpec c = countryForSiteSlot(siteIndex, slot);
         int seq = siteIndex * SLOTS_PER_SITE + slot;
-        Random rng = new Random(20261121L + seq * 997L);
+        Random rng = new Random(20261121L + seq * 997L + siteIndex * 13L);
 
         // Platform base economics (2025-2026 overseas AFS arbitrage).
         double baseDailySpend;
         double baseCtr;
         double baseCpc;
+        double baseCpm;
         switch (v.platform()) {
             case "TikTok" -> {
                 baseDailySpend = 155.0;
                 baseCtr = 0.0148;
                 baseCpc = 0.37;
+                baseCpm = 6.0;
             }
             case "Taboola" -> {
                 baseDailySpend = 125.0;
                 baseCtr = 0.0044;
                 baseCpc = 0.24;
+                baseCpm = 2.2;
             }
             case "Google" -> {
                 baseDailySpend = 205.0;
                 baseCtr = 0.0385;
                 baseCpc = 0.72;
+                baseCpm = 9.0;
             }
             default -> { // Facebook / Meta
                 baseDailySpend = 185.0;
                 baseCtr = 0.0168;
                 baseCpc = 0.50;
+                baseCpm = 7.5;
             }
         }
 
-        // Publisher-level realism: not all 12 publishers have identical ROAS!
-        double publisherShift = switch (siteIndex % 6) {
-            case 0 -> 0.06;
-            case 1 -> -0.04;
-            case 2 -> 0.09;
-            case 3 -> -0.07;
-            case 4 -> 0.03;
-            default -> -0.02;
-        };
+        // Every publisher gets its own efficiency: stronger sites earn more per click and
+        // convert better, weaker sites burn budget faster. No two sites share a curve.
+        double efficiency = publisherIndex(siteIndex);
+        double cpcEfficiency = 1.0 / Math.sqrt(efficiency);
+        double ctrEfficiency = efficiency;
+        double conversionEfficiency = clamp(1.0 + (efficiency - 1.0) * 0.25, 0.96, 1.03);
 
         // Campaign archetype (across active slots 0..15):
-        // ~28% scaling winners (1.36-1.68), ~40% core healthy (1.06-1.34),
-        // ~18% soft/fatiguing (0.86-1.05), ~14% bleeding stop-loss (0.64-0.84).
-        int archetypeBucket = (slot * 7 + siteIndex * 3) % 16;
+        // ~31% scaling winners, ~38% core healthy, ~19% soft/fatiguing, ~12% bleeding stop-loss.
+        int archetypeBucket = Math.floorMod(slot * 7 + siteIndex * 5, 16);
         double targetBaseRoas;
         double dailyRoasSlope;
         double scaleMult;
         if (archetypeBucket <= 4) { // Winner (5/16)
-            targetBaseRoas = 1.38 + rng.nextDouble() * 0.28 + publisherShift * 0.5;
+            targetBaseRoas = 1.36 + rng.nextDouble() * 0.30 + (efficiency - 1.0) * 1.4;
             dailyRoasSlope = 0.003;
             scaleMult = 1.15 + rng.nextDouble() * 0.55;
         } else if (archetypeBucket <= 10) { // Core profitable (6/16)
-            targetBaseRoas = 1.08 + rng.nextDouble() * 0.26 + publisherShift * 0.5;
+            targetBaseRoas = 1.06 + rng.nextDouble() * 0.28 + (efficiency - 1.0) * 0.9;
             dailyRoasSlope = (rng.nextDouble() - 0.5) * 0.004;
             scaleMult = 0.80 + rng.nextDouble() * 0.55;
         } else if (archetypeBucket <= 13) { // Soft / fatiguing (3/16)
-            targetBaseRoas = 0.94 + rng.nextDouble() * 0.14 + publisherShift * 0.3;
+            targetBaseRoas = 0.93 + rng.nextDouble() * 0.15 + (efficiency - 1.0) * 0.5;
             dailyRoasSlope = -0.014; // genuine 14-day fatigue curve for AI diagnostics!
             scaleMult = 0.70 + rng.nextDouble() * 0.45;
         } else { // Bleeding stop-loss candidate (2/16)
-            targetBaseRoas = 0.68 + rng.nextDouble() * 0.16;
+            targetBaseRoas = 0.66 + rng.nextDouble() * 0.18 + (efficiency - 1.0) * 0.4;
             dailyRoasSlope = -0.009;
             scaleMult = 0.65 + rng.nextDouble() * 0.50;
         }
-        targetBaseRoas = clamp(targetBaseRoas, 0.60, 1.74);
+        targetBaseRoas = clamp(targetBaseRoas, 0.56, 1.70);
 
         double campaignCtrFactor = 0.85 + rng.nextDouble() * 0.32;
         double campaignCpcFactor = 0.86 + rng.nextDouble() * 0.28;
@@ -1121,35 +1424,68 @@ final class PlatformEconomics {
         double baseSerpMatch = 0.93 + rng.nextDouble() * 0.05;    // 93% - 98% SERP matched ads
         double baseSerpCtr = 0.58 + rng.nextDouble() * 0.18;      // 58% - 76% SERP paid click CTR
 
+        // Pacing archetypes: some campaigns ramp, some hold, some get cut mid-flight.
+        double pacingTrend = switch (Math.floorMod(seq, 5)) {
+            case 0 -> 0.022;
+            case 1 -> 0.010;
+            case 2 -> 0.0;
+            case 3 -> -0.012;
+            default -> -0.028;
+        };
+        boolean midFlightCut = Math.floorMod(seq, 11) == 0;
+        int cutDay = midFlightCut ? 8 + rng.nextInt(Math.max(1, days - 8)) : -1;
+        // Not every campaign is a perfectly budgeted, evenly delivered build: budgets drift,
+        // a few days lose tracking, a few get a short spike, and new launches learn slowly.
+        double budgetProfile = 0.72 + rng.nextDouble() * 0.70;
+        int outageDay = Math.floorMod(seq, 17) == 0 ? 3 + Math.floorMod(seq, 7) : -1;
+        int spikeDay = Math.floorMod(seq, 13) == 0 ? 5 + Math.floorMod(seq, 6) : -1;
+        boolean learningPhase = Math.floorMod(seq, 4) == 0;
+
+        // Category seasonality: B2B-ish verticals dip on weekends, consumer verticals lift.
+        boolean businessCategory = v.categorySlug().contains("finance")
+                || v.categorySlug().contains("office")
+                || v.categorySlug().contains("insurance")
+                || v.categorySlug().contains("degree")
+                || v.categorySlug().contains("market")
+                || v.categorySlug().contains("ecommerce")
+                || v.categorySlug().contains("privacy");
+
         List<DailyRow> rows = new ArrayList<>(days);
         for (int d = 0; d < days; d++) {
             LocalDate date = start.plusDays(d);
             DayOfWeek dow = date.getDayOfWeek();
             boolean weekend = dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY;
             double dowVol = weekend
-                    ? (v.categorySlug().contains("finance") || v.categorySlug().contains("office") ? 0.86 : 1.07)
+                    ? (businessCategory ? 0.87 : 1.08)
                     : (dow == DayOfWeek.TUESDAY || dow == DayOfWeek.WEDNESDAY ? 1.05 : 1.00);
             double dowRpm = weekend
-                    ? (v.categorySlug().contains("finance") || v.categorySlug().contains("insurance") ? 0.94 : 1.02)
+                    ? (businessCategory ? 0.95 : 1.02)
                     : 1.01;
 
-            double trendVol = 1.0 + (dailyRoasSlope > 0 ? 0.012 : dailyRoasSlope < -0.008 ? -0.006 : 0.002) * (d - days / 2.0);
+            boolean paused = midFlightCut && d >= cutDay;
+            double trendVol = 1.0 + pacingTrend * (d - days / 2.0);
             double volNoise = 0.92 + rng.nextDouble() * 0.16;
             double cpcNoise = 0.95 + rng.nextDouble() * 0.10;
+            double cpmNoise = 0.92 + rng.nextDouble() * 0.16;
             double ctrNoise = 0.94 + rng.nextDouble() * 0.12;
             double roasNoise = 0.93 + rng.nextDouble() * 0.14;
 
-            double rawSpend = baseDailySpend * c.volMult() * scaleMult * dowVol * trendVol * volNoise;
-            rawSpend = Math.max(42.0, rawSpend);
+            double rawSpend = baseDailySpend * c.volMult() * scaleMult * dowVol * trendVol * volNoise * budgetProfile;
+            // A cut campaign keeps a trickle of delivery instead of dropping to exactly zero.
+            if (paused) rawSpend *= 0.18;
+            if (d == outageDay) rawSpend *= 0.16;
+            if (d == spikeDay) rawSpend *= 2.1;
+            rawSpend = Math.max(24.0, rawSpend);
 
-            double dayCpc = baseCpc * c.cpcMult() * campaignCpcFactor * cpcNoise
+            double dayCpc = baseCpc * c.cpcMult() * campaignCpcFactor * cpcNoise * cpcEfficiency
                     * (dailyRoasSlope < -0.008 ? 1.0 + 0.006 * d : 1.0);
-            long adClicks = Math.max(25L, Math.round(rawSpend / dayCpc));
+            long adClicks = Math.max(paused ? 8L : 25L, Math.round(rawSpend / dayCpc));
             BigDecimal adSpend = BigDecimal.valueOf(adClicks * dayCpc).setScale(2, RoundingMode.HALF_UP);
 
-            double fatigueCtr = dailyRoasSlope < -0.008 ? Math.max(0.78, 1.0 - 0.012 * d) : 1.0;
-            double dayCtr = clamp(baseCtr * campaignCtrFactor * ctrNoise * fatigueCtr, 0.0022, 0.068);
-            long adImpressions = Math.max(adClicks * 12L, Math.round(adClicks / dayCtr));
+            double dayCpm = baseCpm * countryCpmMult(c.code()) * campaignCpcFactor * cpmNoise;
+            // Impressions follow the market's CPM level, so a Tier-1 US buy does not end up with
+            // a lower CPM than a Tier-3 market just because it runs on a different platform.
+            long adImpressions = Math.max(adClicks * 2L, Math.round(adSpend.doubleValue() / Math.max(0.6, dayCpm) * 1000));
 
             // Two-click AFS funnel (monotonically decreasing: adClicks >= funnelImp >= funnelClicks >= serpImp >= afsClicks)
             long funnelImp = clampLong(Math.round(adClicks * clamp(baseLpLoad + (rng.nextDouble() - 0.5) * 0.03, 0.76, 0.91)),
@@ -1162,10 +1498,15 @@ final class PlatformEconomics {
                     1L, serpImp);
 
             // Pixel S2S conversions track SERP paid clicks closely -> riskValue = afsClicks / adConversions ~ 0.95 - 1.08.
-            double pixelMatch = 0.94 + rng.nextDouble() * 0.12;
-            long adConversions = clampLong(Math.round(afsClicks * pixelMatch), 1L, adClicks);
+            double pixelMatch = clamp(0.94 + rng.nextDouble() * 0.12, 0.94, 1.06);
+            long adConversions = clampLong(Math.round(afsClicks * pixelMatch * conversionEfficiency), 1L, adClicks);
 
-            double dayRoas = clamp((targetBaseRoas + dailyRoasSlope * (d - days / 2.0)) * dowRpm * roasNoise, 0.52, 1.88);
+            double roasAdjust = 1.0;
+            if (learningPhase && d < 3) roasAdjust *= 0.82;
+            if (d == spikeDay) roasAdjust *= 0.82;
+            if (d == outageDay) roasAdjust *= 1.04;
+            double dayRoas = clamp((targetBaseRoas + dailyRoasSlope * (d - days / 2.0)) * dowRpm * roasNoise * roasAdjust,
+                    0.50, 1.90);
             BigDecimal revenue = adSpend.multiply(BigDecimal.valueOf(dayRoas)).setScale(2, RoundingMode.HALF_UP);
 
             double rpc = afsClicks > 0 ? round2(revenue.doubleValue() / afsClicks) : 0.0;

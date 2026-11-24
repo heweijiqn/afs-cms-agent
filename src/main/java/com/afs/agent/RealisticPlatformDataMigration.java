@@ -34,6 +34,8 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code public_ad_case_metric}, and user/AI-analyzed {@code optimization_run} records.
  */
 @Order(600)
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "afs.workspace.realistic-data", havingValue = "true")
 class RealisticPlatformDataMigration implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(RealisticPlatformDataMigration.class);
     static final String MIGRATION = "realistic-platform-data-v1";
@@ -88,7 +90,7 @@ class RealisticPlatformDataMigration implements ApplicationRunner {
             String campaignName = PlatformEconomics.campaignName(siteIndex, slot);
             String articleTitle = PlatformEconomics.articleTitle(siteIndex, slot);
             String landingUrl = PlatformEconomics.landingPageUrl(siteIndex, slot, fx.channelId());
-            String state = PlatformEconomics.campaignState(slot);
+            String state = PlatformEconomics.campaignState(siteIndex, slot);
             String ruleKey = PlatformEconomics.ruleKeyForCampaign(siteIndex, slot);
             Long ruleId = ruleKey == null ? null : ruleIds.get(ruleKey);
             var creative = PlatformEconomics.creativeForCampaign(siteIndex, slot);
@@ -148,7 +150,7 @@ class RealisticPlatformDataMigration implements ApplicationRunner {
             platformInfo.put("localCampaignId", fx.campaignId());
             platformInfo.remove("platformCampaign");
 
-            if (PlatformEconomics.isRunningActive(slot)) {
+            if (PlatformEconomics.isRunningActive(siteIndex, slot)) {
                 List<PlatformEconomics.DailyRow> series = PlatformEconomics.generateDailySeries(
                         siteIndex, slot, start, PlatformEconomics.ACTIVE_DAYS);
                 totals = PlatformEconomics.summarize(series);
@@ -216,7 +218,7 @@ class RealisticPlatformDataMigration implements ApplicationRunner {
                     totals.profit().doubleValue(), totals.roas(), createdAt, updatedAt, fx.campaignId());
 
             if ("TikTok".equals(vertical.platform())) {
-                String adGroupStatus = PlatformEconomics.isRunningActive(slot) ? "ENABLE" : "DISABLE";
+                String adGroupStatus = PlatformEconomics.isRunningActive(siteIndex, slot) ? "ENABLE" : "DISABLE";
                 double budget = totals.suggestedDailyBudget().signum() > 0
                         ? totals.suggestedDailyBudget().doubleValue() : 120.0;
                 db.update("""

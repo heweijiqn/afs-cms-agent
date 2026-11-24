@@ -38,7 +38,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @SpringBootTest(classes = Application.class, properties = {
         "spring.datasource.url=jdbc:h2:mem:ai-platform;MODE=MySQL;DATABASE_TO_LOWER=TRUE;NON_KEYWORDS=VALUE,USER",
-        "cms.agent.ai.base-url=", "cms.agent.ai.api-key=", "afs.demo.seed=false"
+        "cms.agent.ai.base-url=", "cms.agent.ai.api-key=", "afs.demo.seed=false",
+        "afs.workspace.realistic-data=false"
 })
 class LocalConsoleIntegrationTest {
     private static final String VAULT = "/cms/console/channel-credentials";
