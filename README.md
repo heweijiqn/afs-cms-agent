@@ -135,6 +135,7 @@ Get-CimInstance Win32_Process -Filter "Name='javaw.exe'" |
 本地工作区默认由 `RealisticPlatformDataMigration` 与 `RealisticWorkspaceExpansion` 两个可重复执行的迁移填充，开关是 `afs.workspace.realistic-data`（`local-cms` 配置里打开，测试环境默认关闭，避免污染内存库）：
 
 - **32 个站点 / 640 条活动**：站点标识来自 `SiteController.sites()`，每个站点一个独立垂类（家居健身、智能安防、旅行卡、装修、牙科、保险、隐私安全等），每个垂类 5 个子主题、20 条活动；活动名按账号内序号编号（`TT_US_FoldableTreadmill_RSOC_07`）。
+- **时间跨度 2023-03 至今**：每个活动有自己的投放窗口（约 30–70 天），窗口起点分布在 2023-03 到 2026-10 之间，约 40% 的活动仍在投放（PASS 256 / ARCHIVE 320 / AUDITING 32 / REJECT 32）。报表、维护页、关键词快照、审批记录都能查到 2023 年以来的日期（`adsense_data` 覆盖 1341 个自然日）；活动创建时间、文章/素材发布时间、审批时间都落在各自窗口上，不再是同一天的批量数据。
 - **市场按垂类分配，不再全站同款**：高客单服务类（种植牙、保险、法律、养老、装修）只买 US/GB/CA/AU/IE；消费品类加 NZ/SG；内容套利类（生活、清洁、居家安全）才带 IN/PH/ZA 的 Tier-3 量。全库市场分布 US 228 / GB 113 / CA 103 / AU 93 / DE 24 / FR 24 / IE 17 / IN 12 / SG 10 / NZ 7 / PH 6 / ZA 3，CPM 随梯队走（Tier 1 约 8–9，Tier 2 约 5–6，Tier 3 约 2）。
 - **内容不重复且按内容类型分语法**：640 篇文章标题互不相同，四种「波次」对应四种文章形态（原始评测、价格清单、横向对比、90 天复盘）；产品类用「N Picks Under $X / N Models Tested」，服务类用「Real Prices / N Providers Compared」，观点类用「How to Choose / N Approaches」。生成器 `ContentLibrary` 按「对比 / 清单 / 预算 / 实测 / 复盘 / 踩坑 / 区域价格 / 安装」八种编辑角度组织正文，德语、法语站点使用本地语标题与本地语搜索词。
 - **素材与文案像素材库**：素材名是资产编号（`tiktok_gb_streaming-mic-setup_9x16_v4`），时长/体积/尺寸按平台规范；广告文案 2–5 行不等，混合钩子、数据佐证与 CTA。
@@ -193,3 +194,5 @@ java -jar target/afs-cms.jar --spring.profiles.active=agent-sim
 
 - [使用手册.md](./使用手册.md)：本地管理台功能导航、常用投放流程、智能体使用指南与常见问题。
 - [AGENT-SIMULATION.md](./AGENT-SIMULATION.md)：智能体状态图细节、API 调试示例与归档数据导入说明。
+- [简历版说明.md](./简历版说明.md)：面向简历与作品集的项目说明（架构、职责、技术亮点、演示脚本）。
+- [docs/interview/](./docs/interview/README.md)：面试材料全套（事实卡、简历模板、STAR 话术、问答集、八股文、手撕题、模拟面试、投递 checklist）。

@@ -38,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
         name = "afs.workspace.realistic-data", havingValue = "true")
 class RealisticWorkspaceExpansion implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(RealisticWorkspaceExpansion.class);
-    static final String MIGRATION = "realistic-workspace-expansion-v34";
+    static final String MIGRATION = "realistic-workspace-expansion-v37";
     private static final ZoneId REPORT_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final JdbcTemplate db;
@@ -56,9 +56,8 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         if (hasMarker(MIGRATION)) return;
         LocalDate end = LocalDate.now(REPORT_ZONE).minusDays(1);
-        LocalDate start = end.minusDays(PlatformEconomics.ACTIVE_DAYS - 1);
-        log.info("Expanding local workspace to {} publishers with unique editorial content ({}..{})",
-                PlatformEconomics.SITE_COUNT, start, end);
+        log.info("Expanding local workspace to {} publishers with history {}..{}",
+                PlatformEconomics.SITE_COUNT, PlatformEconomics.HISTORY_START, end);
 
         Map<Integer, Long> accountIds = rebuildAccountsAndAccess();
         Map<String, Long> rules = rebuildRules();
@@ -74,17 +73,20 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
             List<CampaignRow> rows = entry.getValue();
             rows.sort(java.util.Comparator.comparingInt(CampaignRow::slot));
             for (CampaignRow row : rows) {
+                var window = PlatformEconomics.windowFor(siteIndex, row.slot());
                 if (!row.present()) {
-                    insertGeneratedRows(siteIndex, row, start);
+                    insertGeneratedRows(siteIndex, row, window);
                     created++;
                 }
-                refreshCampaign(siteIndex, row, start, end);
-                if (row.active()) {
+                refreshCampaign(siteIndex, row, window);
+                boolean historicalSample = !row.active() && row.slot() == 3
+                        && window.end().isAfter(end.minusDays(400));
+                if (row.active() || historicalSample) {
                     runCandidates.add(new SeedRunCandidate(
                             PlatformEconomics.siteCode(siteIndex), row.channelId(), row.campaignId(),
                             PlatformEconomics.vertical(siteIndex).platform(),
                             PlatformEconomics.operatorForCampaign(siteIndex, row.slot()),
-                            start, end, row.totals()));
+                            window.start(), window.end(), row.totals()));
                 }
             }
         }
@@ -96,6 +98,7 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
         rebuildFeedback(end);
         createOptimizationRuns(runCandidates);
         diversifyReviewNotes();
+        backdateOptimizationRuns();
 
         db.update("INSERT INTO local_migration(name) VALUES (?)", MIGRATION);
         log.info("Completed {}: {} new campaigns and {} refreshed campaigns across {} publishers.",
@@ -386,7 +389,8 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
     }
 
     /** Materialises article/category/material/resource rows for a publisher that is not seeded yet. */
-    private void insertGeneratedRows(int siteIndex, CampaignRow row, LocalDate start) throws Exception {
+    private void insertGeneratedRows(int siteIndex, CampaignRow row, PlatformEconomics.CampaignWindow window) throws Exception {
+        LocalDate start = window.start();
         var vertical = PlatformEconomics.vertical(siteIndex);
         var sub = PlatformEconomics.subtopic(siteIndex, row.slot());
         var country = PlatformEconomics.countryForSiteSlot(siteIndex, row.slot());
@@ -465,9 +469,12 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
         db.update("DELETE FROM adsense_data WHERE ad_resource_id = ? OR custom_channel_id LIKE ?",
                 campaignId, "%:" + row.channelId());
         db.update("DELETE FROM ad_resource_rule_log WHERE ad_resource_id = ?", campaignId);
+        db.update("DELETE FROM ad_data WHERE ad_id = ?", row.adId());
     }
 
-    private void refreshCampaign(int siteIndex, CampaignRow row, LocalDate start, LocalDate end) throws Exception {        var vertical = PlatformEconomics.vertical(siteIndex);
+    private void refreshCampaign(int siteIndex, CampaignRow row, PlatformEconomics.CampaignWindow window) throws Exception {
+        LocalDate start = window.start();
+        LocalDate end = window.end();        var vertical = PlatformEconomics.vertical(siteIndex);
         var sub = PlatformEconomics.subtopic(siteIndex, row.slot());
         var country = PlatformEconomics.countryForSiteSlot(siteIndex, row.slot());
         var content = content(siteIndex, row.slot());
@@ -493,35 +500,43 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
         db.update("""
                 UPDATE article_info
                 SET title = ?, terms = ?, category = ?, first_part = ?, text_list = ?, lang = ?, state = ?,
-                    site = ?, partner = ?, other_info = ?, utime = ?
+                    site = ?, partner = ?, other_info = ?, ctime = ?, utime = ?
                 WHERE article_id = ?
                 """, content.title(), keyword, vertical.categorySlug(), content.lead(),
                 json.writeValueAsString(content.paragraphs()), country.lang(), state, site,
                 PlatformEconomics.PARTNER, otherInfo,
-                Timestamp.valueOf(end.atTime(8 + (row.sequence() * 5) % 13, (row.sequence() * 7) % 60)), row.articleId());
+                Timestamp.valueOf(start.minusDays(2).atTime(9 + row.slot() % 7, (row.sequence() * 3) % 60)),
+                Timestamp.valueOf(start.plusDays(1).atTime(8 + (row.sequence() * 5) % 13, (row.sequence() * 7) % 60)),
+                row.articleId());
 
         db.update("UPDATE crawl_content SET content = ?, category = ? WHERE fid = ?",
                 json.writeValueAsString(content.paragraphs()), vertical.categorySlug(),
                 "afs-crawl-%03d".formatted(row.sequence() + 1));
         db.update("DELETE FROM keyword_report_data WHERE article_id = ?", row.articleId());
         db.update("DELETE FROM google_bigquery_keyword_data WHERE article_id = ?", row.articleId());
-        db.update("INSERT INTO keyword_report_data (pd, article_id, keyword) VALUES (?, ?, ?)",
-                end.toString(), row.articleId(), keyword);
-        db.update("INSERT INTO google_bigquery_keyword_data (pd, article_id, key_word, `count`) VALUES (?, ?, ?, ?)",
-                end.toString(), row.articleId(), keyword, 45 + (row.sequence() * 29) % 380);
+        // Keyword reports arrive as monthly snapshots, so the archive has depth rather than one day.
+        for (LocalDate snapshot : monthlySnapshots(start, end)) {
+            db.update("INSERT INTO keyword_report_data (pd, article_id, keyword) VALUES (?, ?, ?)",
+                    snapshot.toString(), row.articleId(), keyword);
+            int base = 45 + (row.sequence() * 29) % 380;
+            int drift = Math.floorMod(snapshot.getMonthValue() * 37 + row.sequence(), 120);
+            db.update("INSERT INTO google_bigquery_keyword_data (pd, article_id, key_word, `count`) VALUES (?, ?, ?, ?)",
+                    snapshot.toString(), row.articleId(), keyword, base + drift);
+        }
 
         // 2. creative & copy
         db.update("""
                 UPDATE ad_material
                 SET name = ?, user_name = ?, country = ?, lang = ?, type = ?, dimension = ?, ratio = ?,
-                    category = ?, template = ?, cover = ?, url = ?, size = ?, duration = ?, utime = ?
+                    category = ?, template = ?, cover = ?, url = ?, size = ?, duration = ?, ctime = ?, utime = ?
                 WHERE ad_material_id = ?
                 """, assetName(siteIndex, row), operator, country.code(), country.lang(), creative.type(),
                 creative.dimension(), creative.ratio(), vertical.categorySlug(), creative.template(),
                 PlatformEconomics.materialCover(siteIndex, materialId, creative),
                 PlatformEconomics.materialUrl(siteIndex, materialId, creative),
                 creative.sizeBytes(), creative.duration(),
-                Timestamp.valueOf(end.atTime(8 + row.slot() % 9, (row.sequence() * 11) % 60)), materialId);
+                Timestamp.valueOf(start.minusDays(1).atTime(10 + row.slot() % 6, (row.sequence() * 11) % 60)),
+                Timestamp.valueOf(start.atTime(8 + row.slot() % 9, (row.sequence() * 11) % 60)), materialId);
         Integer textExists = db.queryForObject("SELECT COUNT(*) FROM ad_text WHERE name = ?",
                 Integer.class, campaignName);
         String copy = json.writeValueAsString(content.adCopy());
@@ -539,11 +554,8 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
         String auditMsg = "";
         List<PlatformEconomics.DailyRow> series;
         if (PlatformEconomics.isRunningActive(siteIndex, row.slot())) {
-            series = PlatformEconomics.generateDailySeries(siteIndex, row.slot(), start, PlatformEconomics.ACTIVE_DAYS);
-            // Campaigns launched mid-window simply have fewer days of data; the aggregates and
-            // rule logs below are computed from the trimmed series, not from a full 14-day run.
-            int trim = Math.floorMod(row.sequence(), 5) == 0 ? 2 + Math.floorMod(row.sequence(), 3) : 0;
-            if (trim > 0 && series.size() > trim + 3) series = series.subList(trim, series.size());
+            int days = (int) java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1;
+            series = PlatformEconomics.generateDailySeries(siteIndex, row.slot(), start, days);
             totals = PlatformEconomics.summarize(series);
             row.totals(totals);
             platformState = "PLATFORM_ACTIVE";
@@ -554,12 +566,14 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
             insertDailyMetrics(siteIndex, row, series, vertical.platform(), country.code(), campaignName, landingUrl);
             if (ruleId != null) insertRuleLogs(siteIndex, row, campaignName, ruleKey, ruleId, series);
         } else if ("ARCHIVE".equals(state)) {
-            series = PlatformEconomics.generateDailySeries(siteIndex, row.slot(), start.minusDays(21),
-                    PlatformEconomics.ACTIVE_DAYS);
+            int days = (int) java.time.temporal.ChronoUnit.DAYS.between(start, end) + 1;
+            series = PlatformEconomics.generateDailySeries(siteIndex, row.slot(), start, days);
             totals = PlatformEconomics.summarize(series);
+            row.totals(totals);
+            insertDailyMetrics(siteIndex, row, series, vertical.platform(), country.code(), campaignName, landingUrl);
             platformState = "PLATFORM_PAUSED";
             ObjectNode info = platformInfo(siteIndex, row, campaignName, totals, "PAUSED",
-                    start.minusDays(21).atTime(9, 0).toString());
+                    end.atTime(18, 0).toString());
             db.update("UPDATE ad_resource SET ad_platform_info = ? WHERE ad_resource_id = ?",
                     info.toString(), row.campaignId());
         } else {
@@ -582,13 +596,14 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
                 SET campaign = ?, title = ?, land_page_url = ?, ad_desc = ?, audit_msg = ?, state = ?, rule_id = ?,
                     country = ?, keyword = ?, ad_account = ?, account_id = ?, ad_platform_state = ?,
                     ad_platform = ?, media_list = ?, am = ?, ad_spend = ?, gross_revenue = ?, profit = ?, roi = ?,
-                    utime = ?
+                    ctime = ?, utime = ?
                 WHERE ad_resource_id = ?
                 """, campaignName, content.title(), landingUrl, desc, auditMsg, state, ruleId,
                 country.code(), keyword, account.accountId(), account.accountId(), platformState,
                 json.writeValueAsString(List.of(vertical.platform())), json.writeValueAsString(List.of(materialId)),
                 operator, totals.adSpend().doubleValue(), totals.grossRevenue().doubleValue(),
                 totals.profit().doubleValue(), totals.roas(),
+                Timestamp.valueOf(start.atTime(9 + row.slot() % 8, (row.sequence() * 5) % 60)),
                 Timestamp.valueOf(end.atTime(8 + (row.sequence() * 11) % 13, (row.sequence() * 13) % 60)), row.campaignId());
 
         if ("TikTok".equals(vertical.platform())) {
@@ -631,6 +646,7 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
 
     private void insertDailyMetrics(int siteIndex, CampaignRow row, List<PlatformEconomics.DailyRow> series,
                                     String platform, String country, String campaignName, String landingUrl) {
+        LocalDate recentFloor = LocalDate.now(REPORT_ZONE).minusDays(120);
         String campaignId = row.campaignId();
         String channelId = row.channelId();
         String site = PlatformEconomics.siteCode(siteIndex);
@@ -640,94 +656,92 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
         String customChannel = "partner-" + publisher + ":" + channelId;
         String sourceTag = "{\"source\":\"platform-sync\",\"platform\":\"" + platform + "\"}";
 
+        // Hundreds of daily rows per campaign, so rows are batched instead of sent one by one.
+        List<Object[]> platformRows = new ArrayList<>(series.size());
+        List<Object[]> adsenseRows = new ArrayList<>(series.size());
+        List<Object[]> adDataRows = new ArrayList<>(series.size());
+
         for (var day : series) {
             String date = day.date().toString();
             double spend = day.adSpend().doubleValue();
             double revenue = day.grossRevenue().doubleValue();
-            switch (platform) {
-                case "TikTok" -> db.update("""
-                        INSERT INTO tiktok_data (`date`, country_code, campaign_id, campaign_name, landing_url,
-                                                 channel_id, clicks, spend, impressions, conversion, advertiser)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, date, country, campaignId, campaignName, landingUrl, channelId,
-                        day.adClicks(), spend, day.adImpressions(), day.adConversions(), accountId);
-                case "Taboola" -> db.update("""
-                        INSERT INTO taboola_data (`date`, country_code, campaign_id, campaign_name, landing_url,
-                                                  channel_id, clicks, spend, impressions, conversion, account_name)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, date, country, campaignId, campaignName, landingUrl, channelId,
-                        day.adClicks(), spend, day.adImpressions(), day.adConversions(), accountId);
-                case "Google" -> db.update("""
-                        INSERT INTO google_data (`date`, country_code, campaign_id, campaign_name, landing_url,
-                                                 channel_id, clicks, spend, impressions, conversion, advertiser, account_name)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, date, country, campaignId, campaignName, landingUrl, channelId,
-                        day.adClicks(), spend, day.adImpressions(), day.adConversions(), accountId, accountId);
-                default -> db.update("""
-                        INSERT INTO meta_data (`date`, country_code, campaign_id, campaign_name, landing_url,
-                                               channel_id, clicks, spend, impressions, conversion, advertiser)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, date, country, campaignId, campaignName, landingUrl, channelId,
-                        day.adClicks(), spend, day.adImpressions(), day.adConversions(), accountId);
+            Object[] platformRow = {date, country, campaignId, campaignName, landingUrl, channelId,
+                    day.adClicks(), spend, day.adImpressions(), day.adConversions(), accountId};
+            if ("Google".equals(platform)) {
+                // google_data carries advertiser and account_name as separate columns.
+                platformRow = java.util.Arrays.copyOf(platformRow, 12);
+                platformRow[11] = accountId;
             }
+            platformRows.add(platformRow);
 
             double ttClicks = 0, ttSpend = 0, ttImpressions = 0, ttConversions = 0;
             double tbClicks = 0, tbSpend = 0, tbImpressions = 0, tbConversions = 0;
             double ggClicks = 0, ggSpend = 0, ggImpressions = 0, ggConversions = 0;
             double fbClicks = 0, fbSpend = 0, fbImpressions = 0, fbConversions = 0;
             switch (platform) {
-                case "TikTok" -> {
-                    ttClicks = day.adClicks();
-                    ttSpend = spend;
-                    ttImpressions = day.adImpressions();
-                    ttConversions = day.adConversions();
-                }
-                case "Taboola" -> {
-                    tbClicks = day.adClicks();
-                    tbSpend = spend;
-                    tbImpressions = day.adImpressions();
-                    tbConversions = day.adConversions();
-                }
-                case "Google" -> {
-                    ggClicks = day.adClicks();
-                    ggSpend = spend;
-                    ggImpressions = day.adImpressions();
-                    ggConversions = day.adConversions();
-                }
-                default -> {
-                    fbClicks = day.adClicks();
-                    fbSpend = spend;
-                    fbImpressions = day.adImpressions();
-                    fbConversions = day.adConversions();
-                }
+                case "TikTok" -> { ttClicks = day.adClicks(); ttSpend = spend; ttImpressions = day.adImpressions(); ttConversions = day.adConversions(); }
+                case "Taboola" -> { tbClicks = day.adClicks(); tbSpend = spend; tbImpressions = day.adImpressions(); tbConversions = day.adConversions(); }
+                case "Google" -> { ggClicks = day.adClicks(); ggSpend = spend; ggImpressions = day.adImpressions(); ggConversions = day.adConversions(); }
+                default -> { fbClicks = day.adClicks(); fbSpend = spend; fbImpressions = day.adImpressions(); fbConversions = day.adConversions(); }
             }
-
-            db.update("""
-                    INSERT INTO adsense_data (`date`, product_code, country_code, custom_channel_id, ad_resource_id,
-                        adsense_data, estimated_earnings, impressions, ad_requests, matched_ad_requests,
-                        individual_ad_impressions, funnel_requests, funnel_impressions, funnel_clicks,
-                        clicks, cost_per_click, impressions_ctr, funnel_rpm,
-                        tt_clicks, tt_spend, tt_impressions, tt_conversion,
-                        tb_clicks, tb_spend, tb_impressions, tb_conversion,
-                        gg_clicks, gg_spend, gg_impressions, gg_conversion,
-                        fb_clicks, fb_spend, fb_impressions, fb_conversion)
-                    VALUES (?, 'AFS', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, date, country, customChannel, campaignId, sourceTag, revenue,
+            adsenseRows.add(new Object[]{date, country, customChannel, campaignId, sourceTag, revenue,
                     day.serpImpressions(), day.funnelImpressions(), day.serpImpressions(),
                     day.serpImpressions(), day.funnelImpressions(), day.funnelImpressions(), day.funnelClicks(),
                     day.afsClicks(), day.afsRpc(), day.afsCtr(), day.funnelRpm(),
                     ttClicks, ttSpend, ttImpressions, ttConversions,
                     tbClicks, tbSpend, tbImpressions, tbConversions,
                     ggClicks, ggSpend, ggImpressions, ggConversions,
-                    fbClicks, fbSpend, fbImpressions, fbConversions);
+                    fbClicks, fbSpend, fbImpressions, fbConversions});
 
-            long epoch = day.date().atStartOfDay(REPORT_ZONE).toInstant().toEpochMilli();
-            db.update("""
+            // App-level ad_data only keeps the recent window; older history is served by the
+            // AdSense/platform tables and the imported archive, which keeps the file compact.
+            if (!day.date().isBefore(recentFloor)) {
+                long epoch = day.date().atStartOfDay(REPORT_ZONE).toInstant().toEpochMilli();
+                adDataRows.add(new Object[]{appId(siteIndex), adId, epoch, country, day.funnelImpressions(), revenue,
+                        day.funnelRpm(), site, day.funnelImpressions(), day.afsClicks(), day.funnelRpm(), sourceTag});
+            }
+        }
+
+        String platformSql = switch (platform) {
+            case "TikTok" -> """
+                    INSERT INTO tiktok_data (`date`, country_code, campaign_id, campaign_name, landing_url,
+                                             channel_id, clicks, spend, impressions, conversion, advertiser)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+            case "Taboola" -> """
+                    INSERT INTO taboola_data (`date`, country_code, campaign_id, campaign_name, landing_url,
+                                              channel_id, clicks, spend, impressions, conversion, account_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+            case "Google" -> """
+                    INSERT INTO google_data (`date`, country_code, campaign_id, campaign_name, landing_url,
+                                             channel_id, clicks, spend, impressions, conversion, advertiser, account_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+            default -> """
+                    INSERT INTO meta_data (`date`, country_code, campaign_id, campaign_name, landing_url,
+                                           channel_id, clicks, spend, impressions, conversion, advertiser)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+        };
+        db.batchUpdate(platformSql, platformRows);
+        db.batchUpdate("""
+                INSERT INTO adsense_data (`date`, product_code, country_code, custom_channel_id, ad_resource_id,
+                    adsense_data, estimated_earnings, impressions, ad_requests, matched_ad_requests,
+                    individual_ad_impressions, funnel_requests, funnel_impressions, funnel_clicks,
+                    clicks, cost_per_click, impressions_ctr, funnel_rpm,
+                    tt_clicks, tt_spend, tt_impressions, tt_conversion,
+                    tb_clicks, tb_spend, tb_impressions, tb_conversion,
+                    gg_clicks, gg_spend, gg_impressions, gg_conversion,
+                    fb_clicks, fb_spend, fb_impressions, fb_conversion)
+                VALUES (?, 'AFS', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, adsenseRows);
+        if (!adDataRows.isEmpty()) {
+            db.batchUpdate("""
                     INSERT INTO ad_data (app_id, ad_id, day_time, country, pv, total, ecpm, page_site, page_pv,
                                          click, page_ecpm, other)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, appId(siteIndex), adId, epoch, country, day.funnelImpressions(), revenue,
-                    day.funnelRpm(), site, day.funnelImpressions(), day.afsClicks(), day.funnelRpm(), sourceTag);
+                    """, adDataRows);
         }
     }
 
@@ -809,13 +823,16 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
             // Reviewers come from the markets this publisher actually buys, so a US-only site
             // does not collect German reviews.
             List<String> markets = PlatformEconomics.marketsForSite(siteIndex);
-            int reviews = 2 + Math.floorMod(siteIndex * 5 + 1, 5);
+            int reviews = 8 + Math.floorMod(siteIndex * 5 + 1, 13);
+            long span = java.time.temporal.ChronoUnit.DAYS.between(
+                    PlatformEconomics.HISTORY_START, end);
             for (int k = 0; k < reviews; k++) {
                 String marketCode = markets.get(Math.floorMod(siteIndex + k * 3, markets.size()));
                 String[] locale = localeOf(marketCode);
                 var seed = PlatformEconomics.siteFeedback(siteIndex, locale[0], k);
-                int daysAgo = rng.nextInt(PlatformEconomics.ACTIVE_DAYS);
-                Timestamp when = Timestamp.valueOf(end.minusDays(daysAgo)
+                // Reviews accumulate over the whole trading history, not just the last fortnight.
+                long offset = (long) rng.nextInt((int) Math.max(1, span));
+                Timestamp when = Timestamp.valueOf(PlatformEconomics.HISTORY_START.plusDays(offset)
                         .atTime(7 + rng.nextInt(16), rng.nextInt(60), rng.nextInt(60)));
                 db.update("INSERT INTO feedback (site, rate, locale, `value`, ctime, utime) VALUES (?, ?, ?, ?, ?, ?)",
                         site, Integer.toString(seed.rate()), locale[1], seed.text(), when, when);
@@ -832,6 +849,32 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
      * conversion figures instead of one of a handful of repeated sentences. Only notes written
      * by this fixture are touched; hand-written review notes are preserved.
      */
+    /**
+     * Approval history belongs on the timeline: each seeded run is stamped to two days after the
+     * campaign it analyses was launched, and its review a day later.
+     */
+    private void backdateOptimizationRuns() {
+        var runs = db.query("SELECT id, CAST(plan AS VARCHAR) AS plan FROM optimization_run",
+                (rs, i) -> new Object[]{rs.getString("id"), rs.getString("plan")});
+        var pattern = java.util.regex.Pattern.compile("\"campaignId\":\"([^\"]+)\"");
+        int moved = 0;
+        for (Object[] row : runs) {
+            String plan = row[1] == null ? "" : (String) row[1];
+            var matcher = pattern.matcher(plan);
+            if (!matcher.find()) continue;
+            String campaignId = matcher.group(1);
+            var starts = db.query("SELECT ctime FROM ad_resource WHERE ad_resource_id = ? LIMIT 1",
+                    (rs, i) -> rs.getTimestamp("ctime"), campaignId);
+            if (starts.isEmpty() || starts.get(0) == null) continue;
+            LocalDate campaignStart = starts.get(0).toLocalDateTime().toLocalDate();
+            db.update("UPDATE optimization_run SET created_at = ?, reviewed_at = ? WHERE id = ?",
+                    Timestamp.valueOf(campaignStart.plusDays(2).atTime(10, 20)),
+                    Timestamp.valueOf(campaignStart.plusDays(3).atTime(15, 5)), row[0]);
+            moved++;
+        }
+        if (moved > 0) log.info("Backdated {} analysis runs onto the campaign timeline.", moved);
+    }
+
     private void diversifyReviewNotes() throws Exception {
         java.util.Set<String> templated = java.util.Set.of(
                 "已核对近 14 天分国家 ROAS 与 AFS RPC，同意按 10% 步长执行预算调整",
@@ -916,6 +959,8 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
                     candidate.totals().adConversions(),
                     new BigDecimal("1.25"), new BigDecimal("50.00"), 30, 10);
             var run = optimizer.create(input, () -> candidate.operator(), false);
+            Timestamp runCreated = Timestamp.valueOf(candidate.start().plusDays(2).atTime(10 + Math.floorMod(input.hashCode(), 6), 15));
+            db.update("UPDATE optimization_run SET created_at = ? WHERE id = ?", runCreated, run.id());
             int scenario = Math.floorMod(candidate.campaignId().hashCode(), 4);
             if (scenario == 0) continue; // keep a pending run for human review
             String reviewer = PlatformEconomics.OPERATORS.stream()
@@ -928,6 +973,8 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
                     : OptimizationController.Decision.APPROVED;
             optimizer.review(run.id(), new OptimizationController.Review(decision,
                     reviewNote(decision, candidate)), () -> reviewer);
+            db.update("UPDATE optimization_run SET reviewed_at = ? WHERE id = ?",
+                    Timestamp.valueOf(candidate.start().plusDays(3).atTime(9, 40)), run.id());
             if (scenario == 3) {
                 BigDecimal dailyBudget = candidate.totals().suggestedDailyBudget().signum() > 0
                         ? candidate.totals().suggestedDailyBudget()
@@ -955,6 +1002,19 @@ class RealisticWorkspaceExpansion implements ApplicationRunner {
         int version = 1 + Math.floorMod(row.sequence(), 4);
         String name = "%s_%s_%s_%s_v%d".formatted(platform, market, slug, ratio, version);
         return name.length() > 120 ? name.substring(0, 120) : name;
+    }
+
+    /** First day of every month inside [start, end], always including the window end date. */
+    private static List<LocalDate> monthlySnapshots(LocalDate start, LocalDate end) {
+        List<LocalDate> out = new ArrayList<>();
+        LocalDate cursor = start.withDayOfMonth(1);
+        if (cursor.isBefore(start)) cursor = cursor.plusMonths(1);
+        while (!cursor.isAfter(end)) {
+            out.add(cursor);
+            cursor = cursor.plusMonths(1);
+        }
+        if (out.isEmpty() || !out.get(out.size() - 1).equals(end)) out.add(end);
+        return out;
     }
 
     private ContentLibrary.CampaignContent content(int siteIndex, int slot) {

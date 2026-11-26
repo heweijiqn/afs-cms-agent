@@ -5,6 +5,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -20,6 +22,7 @@ final class PlatformEconomics {
     static final int SLOTS_PER_SITE = 20;
     static final int ACTIVE_DAYS = 14;
     static final String PARTNER = "AFS Media";
+    static final ZoneId REPORT_ZONE = ZoneId.of("Asia/Shanghai");
 
     record OperatorSpec(String name, String desc, List<String> sites) {}
 
@@ -1176,41 +1179,70 @@ final class PlatformEconomics {
         return "https://%s.com/p/%s-%s-%03d?channel=%s".formatted(site, batch, creative, seq % 1000, channelId);
     }
 
+    /** First month the workspace has trading history for. */
+    static final LocalDate HISTORY_START = LocalDate.of(2023, 3, 1);
+
+    /** A campaign runs for a limited window; only the recent ones are still delivering today. */
+    record CampaignWindow(LocalDate start, LocalDate end, boolean live) {}
+
     /**
-     * Real accounts do not carry an identical status mix on every publisher: the number of
-     * live campaigns, the one waiting to be published, the audited and the rejected one all
-     * drift between 12 and 16 active builds here.
+     * Spreads 640 campaign windows across 2023-03 .. today instead of stacking everything into
+     * one fortnight. Roughly 30% of the book is still live (so today's dashboards and the AI
+     * scanner have work to do), the rest ended at various points in the past.
      */
-    static int activeCampaigns(int siteIndex) {
-        return 12 + Math.floorMod(siteIndex * 3, 5);
+    static CampaignWindow windowFor(int siteIndex, int slot) {
+        LocalDate today = LocalDate.now(REPORT_ZONE);
+        int seq = siteIndex * SLOTS_PER_SITE + slot;
+        // Review states are current work, not history: a campaign cannot sit in audit since 2023.
+        if (slot == 18 || slot == 19) {
+            LocalDate reviewEnd = today.minusDays(slot == 18 ? 1 : 9);
+            return new CampaignWindow(reviewEnd.minusDays(2), reviewEnd, false);
+        }
+        long span = ChronoUnit.DAYS.between(HISTORY_START, today);
+        long length;
+        LocalDate end;
+        if (Math.floorMod(seq, 10) < 4) {
+            // Currently delivering: launched 30-70 days ago, most still live today.
+            length = 30 + Math.floorMod(seq * 7, 41);
+            end = today.minusDays(Math.floorMod(seq, 3));
+        } else {
+            // Finished earlier in the history, evenly spread over the whole range.
+            length = 25 + Math.floorMod(seq * 11, 41);
+            long offset = 75 + Math.floorMod(seq * 137L, Math.max(1, span - 110));
+            end = HISTORY_START.plusDays(offset);
+        }
+        LocalDate windowStart = end.minusDays(length - 1);
+        if (windowStart.isBefore(HISTORY_START)) windowStart = HISTORY_START;
+        boolean live = !end.isBefore(today.minusDays(2));
+        return new CampaignWindow(windowStart, end, live);
     }
 
+    static LocalDate windowEnd(int siteIndex, int slot) {
+        return windowFor(siteIndex, slot).end();
+    }
+
+    /** Slot 18 is waiting for platform review and slot 19 was rejected; everything else trades. */
     static String campaignState(int siteIndex, int slot) {
-        int active = activeCampaigns(siteIndex);
-        if (slot < active) return "PASS";
-        if (slot == active) return "PASS";
-        if (slot == active + 1) return "AUDITING";
-        if (slot == active + 2) return "REJECT";
-        return "ARCHIVE";
+        if (slot == 18) return "AUDITING";
+        if (slot == 19) return "REJECT";
+        return windowFor(siteIndex, slot).live() ? "PASS" : "ARCHIVE";
     }
 
     static boolean isRunningActive(int siteIndex, int slot) {
-        return slot < activeCampaigns(siteIndex);
+        return slot < 18 && windowFor(siteIndex, slot).live();
     }
 
     static boolean isReadyToPublish(int siteIndex, int slot) {
-        return slot == activeCampaigns(siteIndex);
+        return slot == 18;
     }
 
     static boolean isRuleIntentionallyUnbound(int siteIndex, int slot) {
-        // Leave 1 active high-spend campaign per site unbound so AI Anomaly Scanner detects RULE_UNBOUND.
-        return slot == activeCampaigns(siteIndex) - 1;
+        // Leave 1 live campaign per site unbound so the AI anomaly scanner still finds RULE_UNBOUND.
+        return slot == 17;
     }
 
     static String ruleKeyForCampaign(int siteIndex, int slot) {
-        if (isRuleIntentionallyUnbound(siteIndex, slot)
-                || isReadyToPublish(siteIndex, slot)
-                || slot >= activeCampaigns(siteIndex) + 1) return null;
+        if (isRuleIntentionallyUnbound(siteIndex, slot) || slot >= 18) return null;
         String platform = vertical(siteIndex).platform();
         int bucket = Math.floorMod(slot + siteIndex, 4);
         return switch (platform) {
