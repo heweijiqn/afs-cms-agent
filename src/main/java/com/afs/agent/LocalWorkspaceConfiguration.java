@@ -19,5 +19,7 @@ import org.springframework.context.annotation.Profile;
         DemoWorkspaceSeed.class, WorkspaceFixtureNames.class, WorkspaceReportIdentifiers.class,
         RegisteredSiteDefaults.class, WorkspaceCampaignIds.class, WorkspaceSiteBindings.class,
         WorkspacePlatformIdentifiers.class, RealisticPlatformDataMigration.class,
-        RealisticWorkspaceExpansion.class, RealisticReportConfigs.class, AiImageGenerator.class})
+        RealisticWorkspaceExpansion.class, RealisticReportConfigs.class, AiImageGenerator.class,
+        PromptRegistry.class, SemanticCache.class, RagService.class, AiEvalService.class,
+        AiJobQueue.class, AiPlatformBootstrap.class, AiPlatformController.class})
 public class LocalWorkspaceConfiguration {}

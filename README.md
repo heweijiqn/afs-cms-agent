@@ -89,6 +89,31 @@ flowchart TB
 
 ---
 
+## 3.5 AI 平台层：RAG / Prompt 版本 / 语义缓存 / 异步队列
+
+除了 Agent 编排，仓库还带一层可独立验收的 AI 工程能力（表结构见 `src/main/resources/ai/schema.sql`）：
+
+| 能力 | 实现 | 实测 |
+| --- | --- | --- |
+| RAG 检索 | `RagService`：文章/反馈/文案分块（520 字符、80 重叠）→ 本地 384 维 embedding → H2 存储 | 3041 chunks / 1725 文档，建索引 **0.9–1.9s** |
+| 混合检索 | `0.72×余弦 + 0.28×关键词命中`，中文提问经词表改写后跨语言召回 | 评测平均关键词召回 **0.94** |
+| 引用溯源 | 每条回答返回 `docType/docId/title/chunkIndex/snippet` | 回答固定带 5 条引用 |
+| 语义缓存 | `SemanticCache`：相似度 ≥0.93 复用答案，TTL 7 天，统计省下的 token | 同一问题 **3452ms → 43ms** |
+| Prompt 注册表 | `PromptRegistry`：key + 版本 + 变量，单一 active 版本可灰度/回滚 | 6 个模板，`/cms/ai/prompts` 可查 |
+| 离线评测 | `AiEvalService`：黄金集 8 条（含 2 条应拒答），指标含通过率/召回/延迟/缓存命中 | **7/8 通过，召回 0.938，平均 3.9s** |
+| 异步任务队列 | `AiJobQueue`：QUEUED/RUNNING/SUCCEEDED/DEAD + 指数退避 + 幂等键 | 索引重建走队列，重启可恢复 |
+
+一句话验收：
+
+```powershell
+python tools\qa\ai_platform_check.py
+```
+
+脚本会真实跑一遍检索、引用回答、缓存命中、拒答、队列消费与评测，输出 `tools/qa/out/ai-platform.json`。
+岗位要求逐条对照见 [docs/JD-MAPPING.md](./docs/JD-MAPPING.md)。
+
+---
+
 ## 4. 四个技术亮点
 
 ### 4.1 把「护栏」做成图里的节点，而不是提示词里的一句话
@@ -214,7 +239,8 @@ flowchart TB
 
 | 局限 | 下一步 |
 | --- | --- |
-| 情景记忆是结构化 SQL（近 5 次审批），语义检索缺失 | 引入 embedding 做「相似活动检索」，但先要有评估集 |
+| 向量检索是 H2 + 内存余弦，适合十万级 chunk | 超过后切 pgvector / Milvus，接口已隔离在 `RagService` |
+| 本地 embedding 语义弱于专业向量模型，中文检索靠词表改写 | 接入 text-embedding-3 / bge 后去掉词表兜底 |
 | 检查点是整图快照，`state_json` 会随节点增多膨胀 | 改为按节点存 delta + 定期 compaction |
 | `evidenceRefs` 是弱约束（提示词 + 人工复核） | 代码级校验：引用必须命中工具返回，否则降级 HOLD |
 | 没有真实线上流量做 A/B | 合成数据只能验证正确性，效果验证需影子流量 |
@@ -226,8 +252,19 @@ flowchart TB
 
 **环境要求**：JDK 17（必需）；Node 18+ 仅在前端需要重新构建时需要，JAR 内已内置构建产物。
 
-```bash
-# 1. 构建
+构建工具与依赖仓库都放在 D 盘，避免占用系统盘：
+
+| 内容 | 位置 |
+| --- | --- |
+| Maven 3.9.9 | `D:\tools\apache-maven-3.9.9` |
+| 依赖仓库 | `D:\m2repo`（通过 junction 兼容默认的 `~/.m2/repository` 路径） |
+| 构建脚本 | `tools\build.ps1`（自动找 JDK 17、指定 D 盘仓库） |
+
+```powershell
+# 1. 构建（Windows 推荐，参数原样转发给 Maven）
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\build.ps1 -o -DskipTests package
+
+# 非 Windows / 已装 mvn 时等价于：
 mvn -DskipTests package
 
 # 2. 一键启动本地一体化模式（H2 文件库 + 合成工作区，端口 9901）

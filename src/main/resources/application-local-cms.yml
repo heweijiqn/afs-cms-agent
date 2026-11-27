@@ -16,7 +16,7 @@ spring:
     init:
       mode: always
       encoding: UTF-8
-      schema-locations: classpath:local/schema.sql,classpath:agent/schema.sql
+      schema-locations: classpath:local/schema.sql,classpath:agent/schema.sql,classpath:ai/schema.sql
       data-locations: classpath:local/platform-case-data.sql,classpath:local/report-fixture-metrics.sql
 
 env: local
